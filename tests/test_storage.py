@@ -1,6 +1,6 @@
-import json
-import pytest
 from pathlib import Path
+
+import pytest
 
 from todo.models import Priority, TodoCreate, TodoUpdate
 from todo.storage import JsonTodoStorage
@@ -23,7 +23,9 @@ def test_init_creates_empty_storage(storage: JsonTodoStorage):
 
 
 def test_create_todo(storage: JsonTodoStorage):
-    todo = storage.create(TodoCreate(title="Buy milk", description="Oat milk", priority=Priority.HIGH))
+    todo = storage.create(
+        TodoCreate(title="Buy milk", description="Oat milk", priority=Priority.HIGH)
+    )
     assert todo.id == 1
     assert todo.title == "Buy milk"
     assert todo.description == "Oat milk"
@@ -37,7 +39,7 @@ def test_create_todo(storage: JsonTodoStorage):
 
 
 def test_get_by_id(storage: JsonTodoStorage):
-    todo1 = storage.create(TodoCreate(title="Task 1"))
+    storage.create(TodoCreate(title="Task 1"))
     todo2 = storage.create(TodoCreate(title="Task 2"))
 
     found = storage.get_by_id(todo2.id)
@@ -102,7 +104,11 @@ def test_clear_completed(storage: JsonTodoStorage):
 
 def test_filtering_and_searching(storage: JsonTodoStorage):
     storage.create(TodoCreate(title="Buy apples", priority=Priority.LOW))
-    storage.create(TodoCreate(title="Buy bananas", description="yellow fruit", priority=Priority.MEDIUM))
+    storage.create(
+        TodoCreate(
+            title="Buy bananas", description="yellow fruit", priority=Priority.MEDIUM
+        )
+    )
     t3 = storage.create(TodoCreate(title="Fix critical bug", priority=Priority.HIGH))
     storage.toggle(t3.id)
 

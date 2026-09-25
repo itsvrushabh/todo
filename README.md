@@ -82,10 +82,23 @@ uv run todo --help
 
 ---
 
-## 🧪 Running Tests
+## 🧪 Testing & Code Quality
 
-Run the test suite with `pytest`:
+Run tests with `pytest`:
 
 ```bash
 uv run pytest
 ```
+
+Check code formatting and linting with `ruff`:
+
+```bash
+uv run ruff format --check
+uv run ruff check
+```
+
+---
+
+## 🔄 Continuous Integration
+
+A GitHub Actions workflow is configured in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) to automatically run formatting checks, linting, and tests on every push and pull request.

@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +13,7 @@ from todo.storage import JsonTodoStorage
 STATIC_DIR = Path(__file__).parent / "static"
 
 
-def create_app(storage_path: Optional[str | Path] = None) -> FastAPI:
+def create_app(storage_path: str | Path | None = None) -> FastAPI:
     if storage_path is None:
         storage_path = os.getenv("TODO_STORAGE_PATH", "todos.json")
 
@@ -37,22 +37,32 @@ def create_app(storage_path: Optional[str | Path] = None) -> FastAPI:
     app.state.storage = storage
 
     @app.get("/api/health")
-    def health_check() -> Dict[str, str]:
+    def health_check() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/api/todos", response_model=List[TodoItem])
+    @app.get("/api/todos", response_model=list[TodoItem])
     def get_todos(
-        status: Optional[str] = Query(None, description="Filter by active, completed, or all"),
-        search: Optional[str] = Query(None, description="Search keyword in title/description"),
-        priority: Optional[str] = Query(None, description="Filter by low, medium, high priority"),
-    ) -> List[TodoItem]:
+        status: str | None = Query(
+            None, description="Filter by active, completed, or all"
+        ),
+        search: str | None = Query(
+            None, description="Search keyword in title/description"
+        ),
+        priority: str | None = Query(
+            None, description="Filter by low, medium, high priority"
+        ),
+    ) -> list[TodoItem]:
         valid_status = status if status in ("active", "completed") else None
         return storage.get_all(status=valid_status, search=search, priority=priority)
 
-    @app.post("/api/todos", response_model=TodoItem, status_code=status.HTTP_201_CREATED)
+    @app.post(
+        "/api/todos", response_model=TodoItem, status_code=status.HTTP_201_CREATED
+    )
     def create_todo(todo_in: TodoCreate) -> TodoItem:
         if not todo_in.title.strip():
-            raise HTTPException(status_code=400, detail="Title cannot be empty or whitespace only")
+            raise HTTPException(
+                status_code=400, detail="Title cannot be empty or whitespace only"
+            )
         return storage.create(todo_in)
 
     @app.get("/api/todos/{todo_id}", response_model=TodoItem)
@@ -77,19 +87,19 @@ def create_app(storage_path: Optional[str | Path] = None) -> FastAPI:
         return toggled
 
     @app.delete("/api/todos/{todo_id}", status_code=status.HTTP_200_OK)
-    def delete_todo(todo_id: int) -> Dict[str, Any]:
+    def delete_todo(todo_id: int) -> dict[str, Any]:
         deleted = storage.delete(todo_id)
         if not deleted:
             raise HTTPException(status_code=404, detail=f"Todo #{todo_id} not found")
         return {"success": True, "message": f"Todo #{todo_id} deleted"}
 
     @app.delete("/api/todos-completed/clear", status_code=status.HTTP_200_OK)
-    def clear_completed_todos() -> Dict[str, Any]:
+    def clear_completed_todos() -> dict[str, Any]:
         cleared_count = storage.clear_completed()
         return {"success": True, "cleared_count": cleared_count}
 
     @app.get("/api/stats")
-    def get_stats() -> Dict[str, Any]:
+    def get_stats() -> dict[str, Any]:
         return storage.get_stats()
 
     # Serve static assets and web interface

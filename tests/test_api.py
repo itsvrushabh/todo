@@ -1,5 +1,6 @@
-import pytest
 from pathlib import Path
+
+import pytest
 from starlette.testclient import TestClient
 
 from todo.app import create_app

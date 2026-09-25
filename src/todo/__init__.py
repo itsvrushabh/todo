@@ -3,8 +3,8 @@ import os
 import sys
 from pathlib import Path
 
+from todo.models import Priority, TodoCreate
 from todo.storage import JsonTodoStorage
-from todo.models import Priority, TodoCreate, TodoUpdate
 
 
 def run_server(host: str, port: int, storage_file: str, reload: bool = False) -> None:
@@ -18,6 +18,7 @@ def run_server(host: str, port: int, storage_file: str, reload: bool = False) ->
     print("=" * 55 + "\n")
 
     import uvicorn
+
     from todo.app import create_app
 
     app = create_app(storage_file)
@@ -40,9 +41,15 @@ def main() -> None:
 
     # Command: serve (default)
     serve_parser = subparsers.add_parser("serve", help="Start the Todo web app server")
-    serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)")
-    serve_parser.add_argument("--port", type=int, default=8000, help="Port to bind (default: 8000)")
-    serve_parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
+    serve_parser.add_argument(
+        "--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)"
+    )
+    serve_parser.add_argument(
+        "--port", type=int, default=8000, help="Port to bind (default: 8000)"
+    )
+    serve_parser.add_argument(
+        "--reload", action="store_true", help="Enable auto-reload"
+    )
 
     # Command: list
     list_parser = subparsers.add_parser("list", help="List todos in the terminal")
@@ -75,7 +82,9 @@ def main() -> None:
 
     # Also support top-level --host and --port when no subcommand is provided
     parser.add_argument("--host", default="127.0.0.1", help="Host when starting server")
-    parser.add_argument("--port", type=int, default=8000, help="Port when starting server")
+    parser.add_argument(
+        "--port", type=int, default=8000, help="Port when starting server"
+    )
 
     args = parser.parse_args()
 
@@ -98,7 +107,9 @@ def main() -> None:
         print("-" * 55)
         for t in todos:
             status_str = "✔ Done" if t.completed else "○ Pending"
-            print(f"{t.id:<5} {status_str:<12} {t.priority.value.upper():<10} {t.title}")
+            print(
+                f"{t.id:<5} {status_str:<12} {t.priority.value.upper():<10} {t.title}"
+            )
             if t.description:
                 print(f"      └─ Note: {t.description}")
         print()
@@ -111,7 +122,9 @@ def main() -> None:
                 priority=Priority(args.priority),
             )
         )
-        print(f"✓ Added task #{new_todo.id}: '{new_todo.title}' [{new_todo.priority.value.upper()}]")
+        print(
+            f"✓ Added task #{new_todo.id}: '{new_todo.title}' [{new_todo.priority.value.upper()}]"
+        )
 
     elif args.command == "done":
         toggled = storage.toggle(args.id)

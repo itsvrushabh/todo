@@ -1,9 +1,9 @@
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import RLock
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from todo.models import Priority, TodoCreate, TodoItem, TodoUpdate
 
@@ -28,7 +28,7 @@ class JsonTodoStorage:
                         data = json.load(f)
                     if not isinstance(data, dict) or "todos" not in data:
                         self._save_raw({"next_id": 1, "todos": []})
-                except (json.JSONDecodeError, OSError):
+                except json.JSONDecodeError, OSError:
                     # In case of corruption, backup and re-initialize
                     backup_path = self.file_path.with_suffix(".corrupt.bak")
                     try:
@@ -37,12 +37,12 @@ class JsonTodoStorage:
                         pass
                     self._save_raw({"next_id": 1, "todos": []})
 
-    def _load_raw(self) -> Dict[str, Any]:
+    def _load_raw(self) -> dict[str, Any]:
         """Load raw dictionary from JSON file."""
         with open(self.file_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
-    def _save_raw(self, data: Dict[str, Any]) -> None:
+    def _save_raw(self, data: dict[str, Any]) -> None:
         """Atomically write data to disk."""
         tmp_file = self.file_path.with_name(f".{self.file_path.name}.tmp")
         with open(tmp_file, "w", encoding="utf-8") as f:
@@ -53,10 +53,10 @@ class JsonTodoStorage:
 
     def get_all(
         self,
-        status: Optional[str] = None,
-        search: Optional[str] = None,
-        priority: Optional[str] = None,
-    ) -> List[TodoItem]:
+        status: str | None = None,
+        search: str | None = None,
+        priority: str | None = None,
+    ) -> list[TodoItem]:
         """Retrieve todos with optional filtering by status (active/completed), search term, and priority."""
         with self._lock:
             raw = self._load_raw()
@@ -75,12 +75,13 @@ class JsonTodoStorage:
                 todos = [
                     t
                     for t in todos
-                    if query in t.title.lower() or (t.description and query in t.description.lower())
+                    if query in t.title.lower()
+                    or (t.description and query in t.description.lower())
                 ]
 
             return todos
 
-    def get_by_id(self, todo_id: int) -> Optional[TodoItem]:
+    def get_by_id(self, todo_id: int) -> TodoItem | None:
         """Find a todo item by ID."""
         with self._lock:
             raw = self._load_raw()
@@ -94,7 +95,7 @@ class JsonTodoStorage:
         with self._lock:
             raw = self._load_raw()
             next_id = raw.get("next_id", 1)
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(UTC).isoformat()
 
             new_todo = TodoItem(
                 id=next_id,
@@ -111,7 +112,7 @@ class JsonTodoStorage:
             self._save_raw(raw)
             return new_todo
 
-    def update(self, todo_id: int, todo_in: TodoUpdate) -> Optional[TodoItem]:
+    def update(self, todo_id: int, todo_in: TodoUpdate) -> TodoItem | None:
         """Update fields of an existing todo item."""
         with self._lock:
             raw = self._load_raw()
@@ -126,20 +127,29 @@ class JsonTodoStorage:
 
                     if "title" in update_data and update_data["title"] is not None:
                         existing.title = update_data["title"].strip()
-                    if "description" in update_data and update_data["description"] is not None:
+                    if (
+                        "description" in update_data
+                        and update_data["description"] is not None
+                    ):
                         existing.description = update_data["description"].strip()
-                    if "completed" in update_data and update_data["completed"] is not None:
+                    if (
+                        "completed" in update_data
+                        and update_data["completed"] is not None
+                    ):
                         existing.completed = update_data["completed"]
-                    if "priority" in update_data and update_data["priority"] is not None:
+                    if (
+                        "priority" in update_data
+                        and update_data["priority"] is not None
+                    ):
                         existing.priority = update_data["priority"]
 
-                    existing.updated_at = datetime.now(timezone.utc).isoformat()
+                    existing.updated_at = datetime.now(UTC).isoformat()
                     todos[i] = existing.model_dump()
                     self._save_raw(raw)
                     return existing
             return None
 
-    def toggle(self, todo_id: int) -> Optional[TodoItem]:
+    def toggle(self, todo_id: int) -> TodoItem | None:
         """Toggle the completed state of a todo item."""
         with self._lock:
             raw = self._load_raw()
@@ -148,7 +158,7 @@ class JsonTodoStorage:
                 if item["id"] == todo_id:
                     existing = TodoItem(**item)
                     existing.completed = not existing.completed
-                    existing.updated_at = datetime.now(timezone.utc).isoformat()
+                    existing.updated_at = datetime.now(UTC).isoformat()
                     todos[i] = existing.model_dump()
                     self._save_raw(raw)
                     return existing
@@ -178,7 +188,7 @@ class JsonTodoStorage:
                 self._save_raw(raw)
             return cleared_count
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Return statistics on todos."""
         with self._lock:
             raw = self._load_raw()
@@ -187,14 +197,24 @@ class JsonTodoStorage:
             completed = sum(1 for t in todos if t.completed)
             active = total - completed
             by_priority = {
-                "high": sum(1 for t in todos if t.priority == Priority.HIGH and not t.completed),
-                "medium": sum(1 for t in todos if t.priority == Priority.MEDIUM and not t.completed),
-                "low": sum(1 for t in todos if t.priority == Priority.LOW and not t.completed),
+                "high": sum(
+                    1 for t in todos if t.priority == Priority.HIGH and not t.completed
+                ),
+                "medium": sum(
+                    1
+                    for t in todos
+                    if t.priority == Priority.MEDIUM and not t.completed
+                ),
+                "low": sum(
+                    1 for t in todos if t.priority == Priority.LOW and not t.completed
+                ),
             }
             return {
                 "total": total,
                 "completed": completed,
                 "active": active,
-                "completion_percentage": round((completed / total * 100), 1) if total > 0 else 0.0,
+                "completion_percentage": round((completed / total * 100), 1)
+                if total > 0
+                else 0.0,
                 "by_priority": by_priority,
             }
