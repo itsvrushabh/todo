@@ -113,6 +113,31 @@ def create_app(storage_path: str | Path | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Frontend assets not found")
         return FileResponse(index_file)
 
+    @app.get("/manifest.json", include_in_schema=False)
+    def serve_manifest() -> FileResponse:
+        manifest_file = STATIC_DIR / "manifest.json"
+        if not manifest_file.exists():
+            raise HTTPException(status_code=404, detail="Manifest not found")
+        return FileResponse(manifest_file, media_type="application/manifest+json")
+
+    @app.get("/sw.js", include_in_schema=False)
+    def serve_sw() -> FileResponse:
+        sw_file = STATIC_DIR / "sw.js"
+        if not sw_file.exists():
+            raise HTTPException(status_code=404, detail="Service worker not found")
+        return FileResponse(
+            sw_file,
+            media_type="application/javascript",
+            headers={"Service-Worker-Allowed": "/"},
+        )
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def serve_favicon() -> FileResponse:
+        fav = STATIC_DIR / "icons" / "favicon.png"
+        if not fav.exists():
+            fav = STATIC_DIR / "icons" / "icon.svg"
+        return FileResponse(fav, media_type="image/png")
+
     return app
 
 

@@ -125,3 +125,25 @@ def test_index_serves_html(client: TestClient):
     assert res.status_code == 200
     assert "TaskMaster" in res.text
     assert "text/html" in res.headers.get("content-type", "")
+
+
+def test_pwa_endpoints(client: TestClient):
+    # Manifest
+    res = client.get("/manifest.json")
+    assert res.status_code == 200
+    manifest = res.json()
+    assert manifest["name"] == "TaskMaster - Modern Todo"
+    assert manifest["short_name"] == "TaskMaster"
+    assert manifest["display"] == "standalone"
+    assert len(manifest["icons"]) >= 2
+
+    # Service Worker
+    res_sw = client.get("/sw.js")
+    assert res_sw.status_code == 200
+    assert "Service-Worker-Allowed" in res_sw.headers
+    assert res_sw.headers["Service-Worker-Allowed"] == "/"
+    assert "CACHE_NAME" in res_sw.text
+
+    # Favicon
+    res_fav = client.get("/favicon.ico")
+    assert res_fav.status_code == 200

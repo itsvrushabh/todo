@@ -85,7 +85,8 @@ body {
   background-color: var(--bg-color);
   color: var(--text-main);
   min-height: 100vh;
-  padding: 40px 16px 80px;
+  min-height: 100dvh;
+  padding: max(32px, env(safe-area-inset-top, 32px)) max(16px, env(safe-area-inset-right, 16px)) max(48px, env(safe-area-inset-bottom, 48px)) max(16px, env(safe-area-inset-left, 16px));
   display: flex;
   justify-content: center;
   transition: background-color 0.3s ease, color 0.3s ease;
@@ -137,6 +138,39 @@ body {
 .subtitle {
   font-size: 0.875rem;
   color: var(--text-muted);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.install-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--primary-border);
+  background: var(--primary-light);
+  color: var(--primary);
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.install-btn:hover {
+  background: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary);
+}
+
+.install-btn svg {
+  flex-shrink: 0;
 }
 
 .icon-button {
@@ -881,4 +915,48 @@ body {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ==========================================================================
+   iOS Install Modal & Offline Status
+   ========================================================================== */
+.ios-intro {
+  margin-bottom: 16px;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+.ios-steps {
+  margin: 0 0 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 0.95rem;
+  color: var(--text-main);
+}
+
+.ios-steps li {
+  line-height: 1.5;
+}
+
+.ios-step-icon {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 4px;
+  color: var(--primary);
+}
+
+.offline-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background-color: var(--priority-high-bg);
+  color: var(--priority-high-text);
+  border: 1px solid var(--danger);
+  border-radius: var(--border-radius-md);
+  font-size: 0.85rem;
+  font-weight: 500;
+  animation: toastIn 0.3s ease-out;
 }

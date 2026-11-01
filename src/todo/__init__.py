@@ -1,5 +1,7 @@
 import argparse
+import io
 import os
+import socket
 import sys
 from pathlib import Path
 
@@ -7,15 +9,73 @@ from todo.models import Priority, TodoCreate
 from todo.storage import JsonTodoStorage
 
 
+def get_lan_ips() -> list[str]:
+    """Detect local network IP addresses for LAN access."""
+    ips: list[str] = []
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        primary = s.getsockname()[0]
+        s.close()
+        if primary and not primary.startswith("127."):
+            ips.append(primary)
+    except OSError:
+        pass
+
+    try:
+        host_name = socket.gethostname()
+        for ip in socket.gethostbyname_ex(host_name)[2]:
+            if not ip.startswith("127.") and ip not in ips:
+                ips.append(ip)
+    except OSError:
+        pass
+    return ips
+
+
+def render_qr_code(url: str) -> str:
+    """Generate ASCII QR code string for terminal display."""
+    try:
+        import qrcode
+
+        qr = qrcode.QRCode(border=1)
+        qr.add_data(url)
+        buf = io.StringIO()
+        qr.print_ascii(out=buf, invert=True)
+        return buf.getvalue().rstrip()
+    except ImportError, OSError, ValueError:
+        return ""
+
+
 def run_server(host: str, port: int, storage_file: str, reload: bool = False) -> None:
-    """Launch the FastAPI Todo Web Application."""
+    """Launch the FastAPI Todo Web Application and print LAN / Mobile access info."""
     os.environ["TODO_STORAGE_PATH"] = storage_file
-    print("\n" + "=" * 55)
-    print(" 🚀 Todo App Server Starting...")
-    print(f" 🌐 Access the Web UI: http://{host}:{port}")
-    print(f" 📁 Data stored at:    {Path(storage_file).resolve()}")
+
+    lan_ips = get_lan_ips()
+    primary_lan_ip = lan_ips[0] if lan_ips else None
+
+    print("\n" + "=" * 60)
+    print(" 🚀 TaskMaster - Cross-Platform Todo App Running!")
+    print("=" * 60)
+
+    if host == "0.0.0.0":
+        print(f" 💻 Local PC Access:     http://localhost:{port}")
+        if primary_lan_ip:
+            mobile_url = f"http://{primary_lan_ip}:{port}"
+            print(f" 📱 Mobile / Wi-Fi LAN:  {mobile_url}")
+            qr_text = render_qr_code(mobile_url)
+            if qr_text:
+                print("\n 📲 Scan with Android / iPhone camera to open instantly:")
+                print(qr_text)
+        else:
+            print(f" 📱 Network (all interfaces): http://0.0.0.0:{port}")
+    else:
+        print(f" 🌐 Access UI:           http://{host}:{port}")
+
+    print(f"\n 📁 Persistent Storage:  {Path(storage_file).resolve()}")
+    print(" ✨ Tip: Tap 'Install' on Android, iPhone, Windows, Mac, or Linux")
+    print("        to use TaskMaster as a standalone desktop/mobile app!")
     print(" 💡 Press Ctrl+C to stop the server")
-    print("=" * 55 + "\n")
+    print("=" * 60 + "\n")
 
     import uvicorn
 
@@ -28,7 +88,7 @@ def run_server(host: str, port: int, storage_file: str, reload: bool = False) ->
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="todo",
-        description="TaskMaster - Modern Todo App with Web UI and CLI support",
+        description="TaskMaster - Modern Todo App with Web UI, PWA, and CLI support",
     )
     parser.add_argument(
         "--file",
@@ -42,7 +102,9 @@ def main() -> None:
     # Command: serve (default)
     serve_parser = subparsers.add_parser("serve", help="Start the Todo web app server")
     serve_parser.add_argument(
-        "--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)"
+        "--host",
+        default="0.0.0.0",
+        help="Host to bind (default: 0.0.0.0 for local network access)",
     )
     serve_parser.add_argument(
         "--port", type=int, default=8000, help="Port to bind (default: 8000)"
@@ -81,7 +143,11 @@ def main() -> None:
     rm_parser.add_argument("id", type=int, help="Task ID to delete")
 
     # Also support top-level --host and --port when no subcommand is provided
-    parser.add_argument("--host", default="127.0.0.1", help="Host when starting server")
+    parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Host when starting server (default: 0.0.0.0 for LAN access)",
+    )
     parser.add_argument(
         "--port", type=int, default=8000, help="Port when starting server"
     )
@@ -91,7 +157,7 @@ def main() -> None:
     storage = JsonTodoStorage(args.file)
 
     if args.command == "serve" or args.command is None:
-        host = getattr(args, "host", "127.0.0.1")
+        host = getattr(args, "host", "0.0.0.0")
         port = getattr(args, "port", 8000)
         reload_flag = getattr(args, "reload", False)
         run_server(host=host, port=port, storage_file=args.file, reload=reload_flag)

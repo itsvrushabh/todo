@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize
   initTheme();
   initDate();
+  initPWA();
   loadTodos();
   loadStats();
 
@@ -462,5 +463,101 @@ document.addEventListener('DOMContentLoaded', () => {
       toast.style.transform = 'translateY(10px)';
       setTimeout(() => toast.remove(), 300);
     }, 2600);
+  }
+
+  // ---------------- PWA & Install Prompt ----------------
+  function initPWA() {
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker
+          .register('/sw.js', { scope: '/' })
+          .then((reg) => {
+            console.log('TaskMaster Service Worker active:', reg.scope);
+          })
+          .catch((err) => {
+            console.warn('Service worker registration failed:', err);
+          });
+      });
+    }
+
+    const installAppBtn = document.getElementById('installAppBtn');
+    const iosInstallModal = document.getElementById('iosInstallModal');
+    const closeIosModalBtn = document.getElementById('closeIosModalBtn');
+    const closeIosModalActionBtn = document.getElementById('closeIosModalActionBtn');
+
+    let deferredPrompt = null;
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true;
+    const isIos = /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
+
+    if (isStandalone) {
+      // Already running as an installed PWA
+      if (installAppBtn) installAppBtn.style.display = 'none';
+    } else if (isIos) {
+      // On iOS Safari, show the install button so user can view how to Add to Home Screen
+      if (installAppBtn) installAppBtn.style.display = 'inline-flex';
+    }
+
+    // Android & Chromium desktop install prompt
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      if (installAppBtn) installAppBtn.style.display = 'inline-flex';
+    });
+
+    if (installAppBtn) {
+      installAppBtn.addEventListener('click', async () => {
+        if (deferredPrompt) {
+          deferredPrompt.prompt();
+          const { outcome } = await deferredPrompt.userChoice;
+          if (outcome === 'accepted') {
+            showToast('Installing TaskMaster...', 'info');
+            installAppBtn.style.display = 'none';
+          }
+          deferredPrompt = null;
+        } else if (isIos && iosInstallModal) {
+          iosInstallModal.style.display = 'flex';
+        } else {
+          showToast('Use browser menu: "Install TaskMaster"', 'info');
+        }
+      });
+    }
+
+    window.addEventListener('appinstalled', () => {
+      showToast('TaskMaster installed successfully!', 'info');
+      if (installAppBtn) installAppBtn.style.display = 'none';
+      deferredPrompt = null;
+    });
+
+    // iOS modal close
+    if (closeIosModalBtn && iosInstallModal) {
+      closeIosModalBtn.addEventListener('click', () => {
+        iosInstallModal.style.display = 'none';
+      });
+    }
+    if (closeIosModalActionBtn && iosInstallModal) {
+      closeIosModalActionBtn.addEventListener('click', () => {
+        iosInstallModal.style.display = 'none';
+      });
+    }
+    if (iosInstallModal) {
+      iosInstallModal.addEventListener('click', (e) => {
+        if (e.target === iosInstallModal) {
+          iosInstallModal.style.display = 'none';
+        }
+      });
+    }
+
+    // Online / Offline status
+    window.addEventListener('offline', () => {
+      showToast('Network disconnected. Running offline.', 'error');
+    });
+    window.addEventListener('online', () => {
+      showToast('Back online! Syncing tasks...', 'info');
+      loadTodos();
+      loadStats();
+    });
   }
 });

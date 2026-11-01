@@ -1,11 +1,15 @@
-# TaskMaster - Modern Todo Application
+# TaskMaster - Cross-Platform Modern Todo Application
 
-A simple, fast, and feature-rich Todo web application and CLI built with **Python 3.14**, **FastAPI**, and persistent **JSON storage**.
+A simple, fast, and feature-rich Todo application and CLI built with **Python 3.14**, **FastAPI**, and persistent **JSON storage**. Designed to run seamlessly in your local environment or local network (LAN) and installable across **Android**, **iPhone**, **Windows**, **macOS**, **Linux**, and **Web browsers** as a Progressive Web App (PWA).
 
 ---
 
 ## ✨ Features
 
+- **Cross-Platform & Local Network Ready**:
+  - Automatically binds to your local network (`0.0.0.0`) so phones, tablets, and laptops on your Wi-Fi can connect.
+  - Generates an instant **ASCII QR code** in your terminal—scan with your phone camera to open immediately!
+  - **Progressive Web App (PWA)**: Installable as a standalone app with native desktop/mobile windows, app icon, and offline cache.
 - **Web Interface**:
   - Clean, responsive UI with **Light & Dark theme** support (with system auto-detection and persistence).
   - Live progress bar showing percentage of completed tasks.
@@ -25,7 +29,7 @@ A simple, fast, and feature-rich Todo web application and CLI built with **Pytho
 
 ## 🚀 Quick Start
 
-### 1. Start the Web App
+### 1. Start the Application
 
 Run using `uv`:
 
@@ -33,13 +37,30 @@ Run using `uv`:
 uv run todo
 ```
 
-Or explicitly specify the host and port:
+When started, your terminal displays:
+- Local PC link: `http://localhost:8000`
+- Mobile / LAN link: `http://<your-local-ip>:8000`
+- A scannable **QR code** for Android & iPhone cameras!
 
-```bash
-uv run todo serve --host 127.0.0.1 --port 8000
-```
+---
 
-Open your browser at: **[http://127.0.0.1:8000](http://127.0.0.1:8000)**
+## 📲 How to Install as an App on Each Device
+
+### 📱 Android
+1. Scan the terminal QR code or open `http://<your-local-ip>:8000` in **Chrome**.
+2. Tap the **"Install"** button in the app header (or tap Chrome menu `⋮` → **"Install app"**).
+3. The app will install with its own icon on your home screen and app drawer, opening full-screen without browser bars.
+
+### 📱 iPhone / iPad (iOS)
+1. Open `http://<your-local-ip>:8000` in **Safari**.
+2. Tap the **Share** button (box with arrow pointing up) at the bottom.
+3. Scroll down and tap **"Add to Home Screen"**, then tap **"Add"**.
+4. TaskMaster will launch in standalone native app mode.
+
+### 💻 Windows, Mac & Linux Desktop
+1. Open `http://localhost:8000` (or local IP) in **Chrome**, **Edge**, or **Brave**.
+2. Click the **"Install"** button in the top header (or the install icon in the browser address bar).
+3. TaskMaster will install as an independent desktop application pinned to your Windows Start Menu / Taskbar, macOS Dock, or Linux Application Launcher.
 
 ---
 
