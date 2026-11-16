@@ -124,6 +124,24 @@ pub struct TodoGuiApp {
     pub show_import_dialog: bool,
     pub import_text: String,
     pub import_status_message: Option<String>,
+    pub server_url: String,
+    pub sync_status: SyncStatus,
+    pub show_settings_dialog: bool,
+    pub pending_sync_events: std::sync::Arc<std::sync::Mutex<Vec<SyncResult>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SyncStatus {
+    LocalOnly,
+    Syncing,
+    Connected,
+    Error(String),
+}
+
+pub enum SyncResult {
+    FetchedTodos(Vec<TodoItem>),
+    SyncError(String),
+    SuccessMessage(String),
 }
 
 impl TodoGuiApp {
@@ -149,6 +167,10 @@ impl TodoGuiApp {
             show_import_dialog: false,
             import_text: String::new(),
             import_status_message: None,
+            server_url: String::new(),
+            sync_status: SyncStatus::LocalOnly,
+            show_settings_dialog: false,
+            pending_sync_events: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
         };
         app.load_todos();
         app
@@ -173,6 +195,12 @@ impl TodoGuiApp {
         {
             if let Some(window) = web_sys::window() {
                 if let Ok(Some(storage)) = window.local_storage() {
+                    if let Ok(Some(url)) = storage.get_item("taskmaster_server_url") {
+                        if !url.trim().is_empty() {
+                            self.server_url = url;
+                            self.sync_status = SyncStatus::Connected;
+                        }
+                    }
                     if let Ok(Some(data)) = storage.get_item("taskmaster_todos") {
                         if let Ok(items) = serde_json::from_str::<Vec<TodoItem>>(&data) {
                             self.todos = items;
@@ -225,6 +253,7 @@ impl TodoGuiApp {
         {
             if let Some(window) = web_sys::window() {
                 if let Ok(Some(storage)) = window.local_storage() {
+                    let _ = storage.set_item("taskmaster_server_url", &self.server_url);
                     if let Ok(json) = serde_json::to_string(&self.todos) {
                         let _ = storage.set_item("taskmaster_todos", &json);
                     }
@@ -358,6 +387,84 @@ impl TodoGuiApp {
         Ok(count)
     }
 
+    pub fn fetch_from_server(&mut self, ctx: egui::Context) {
+        let trimmed_url = self.server_url.trim().trim_end_matches('/');
+        if trimmed_url.is_empty() {
+            self.sync_status = SyncStatus::LocalOnly;
+            return;
+        }
+
+        self.sync_status = SyncStatus::Syncing;
+        let url = format!("{trimmed_url}/api/todos");
+        let request = ehttp::Request::get(&url);
+        let pending = self.pending_sync_events.clone();
+
+        ehttp::fetch(request, move |result| {
+            if let Ok(mut guard) = pending.lock() {
+                match result {
+                    Ok(response) => {
+                        if response.status == 200 {
+                            if let Ok(items) =
+                                serde_json::from_slice::<Vec<TodoItem>>(&response.bytes)
+                            {
+                                guard.push(SyncResult::FetchedTodos(items));
+                            } else {
+                                guard.push(SyncResult::SyncError(
+                                    "Failed to parse JSON response from server".to_string(),
+                                ));
+                            }
+                        } else {
+                            guard.push(SyncResult::SyncError(format!(
+                                "Server error: HTTP {}",
+                                response.status
+                            )));
+                        }
+                    }
+                    Err(err) => {
+                        guard.push(SyncResult::SyncError(format!("Network error: {err}")));
+                    }
+                }
+            }
+            ctx.request_repaint();
+        });
+    }
+
+    pub fn test_connection(&mut self, ctx: egui::Context) {
+        let trimmed_url = self.server_url.trim().trim_end_matches('/');
+        if trimmed_url.is_empty() {
+            self.sync_status = SyncStatus::LocalOnly;
+            return;
+        }
+
+        self.sync_status = SyncStatus::Syncing;
+        let url = format!("{trimmed_url}/api/health");
+        let request = ehttp::Request::get(&url);
+        let pending = self.pending_sync_events.clone();
+
+        ehttp::fetch(request, move |result| {
+            if let Ok(mut guard) = pending.lock() {
+                match result {
+                    Ok(response) => {
+                        if response.status == 200 {
+                            guard.push(SyncResult::SuccessMessage(
+                                "Connected successfully to backend API".to_string(),
+                            ));
+                        } else {
+                            guard.push(SyncResult::SyncError(format!(
+                                "Server returned HTTP {}",
+                                response.status
+                            )));
+                        }
+                    }
+                    Err(err) => {
+                        guard.push(SyncResult::SyncError(format!("Network error: {err}")));
+                    }
+                }
+            }
+            ctx.request_repaint();
+        });
+    }
+
     pub fn filtered_todos(&self) -> Vec<&TodoItem> {
         self.todos
             .iter()
@@ -395,6 +502,29 @@ impl eframe::App for TodoGuiApp {
             self.editing_id = None;
             self.show_export_dialog = false;
             self.show_import_dialog = false;
+            self.show_settings_dialog = false;
+        }
+
+        // Process pending async background sync events
+        let events: Vec<SyncResult> = match self.pending_sync_events.try_lock() {
+            Ok(mut guard) => guard.drain(..).collect(),
+            Err(_) => Vec::new(),
+        };
+
+        for event in events {
+            match event {
+                SyncResult::FetchedTodos(items) => {
+                    self.todos = items;
+                    self.sync_status = SyncStatus::Connected;
+                    self.save_todos();
+                }
+                SyncResult::SyncError(err) => {
+                    self.sync_status = SyncStatus::Error(err);
+                }
+                SyncResult::SuccessMessage(_) => {
+                    self.sync_status = SyncStatus::Connected;
+                }
+            }
         }
 
         // Apply Dynamic Theme
@@ -439,6 +569,8 @@ impl eframe::App for TodoGuiApp {
                             .size(13.0),
                     );
 
+                    let mut trigger_fetch = false;
+
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .button(
@@ -471,6 +603,63 @@ impl eframe::App for TodoGuiApp {
                             self.show_import_dialog = true;
                         }
 
+                        if ui.button("⚙️ Sync Settings").clicked() {
+                            self.show_settings_dialog = true;
+                        }
+
+                        // Sync Status Indicator & Quick Action
+                        match &self.sync_status {
+                            SyncStatus::Connected => {
+                                if ui
+                                    .small_button("🔄")
+                                    .on_hover_text("Sync from server now")
+                                    .clicked()
+                                {
+                                    trigger_fetch = true;
+                                }
+                                ui.label(
+                                    egui::RichText::new("🟢 Online")
+                                        .color(egui::Color32::from_rgb(166, 227, 161))
+                                        .size(11.0)
+                                        .strong(),
+                                )
+                                .on_hover_text(format!("Connected to {}", self.server_url));
+                            }
+                            SyncStatus::Syncing => {
+                                ui.label(
+                                    egui::RichText::new("🔄 Syncing...")
+                                        .color(egui::Color32::from_rgb(250, 179, 135))
+                                        .size(11.0),
+                                );
+                            }
+                            SyncStatus::Error(err) => {
+                                if ui
+                                    .small_button("🔄")
+                                    .on_hover_text("Retry server sync")
+                                    .clicked()
+                                {
+                                    trigger_fetch = true;
+                                }
+                                ui.label(
+                                    egui::RichText::new("🔴 Offline")
+                                        .color(egui::Color32::from_rgb(243, 139, 168))
+                                        .size(11.0)
+                                        .strong(),
+                                )
+                                .on_hover_text(err);
+                            }
+                            SyncStatus::LocalOnly => {
+                                ui.label(
+                                    egui::RichText::new("🟡 Local")
+                                        .color(egui::Color32::from_rgb(249, 226, 175))
+                                        .size(11.0),
+                                )
+                                .on_hover_text(
+                                    "Using local storage. Click ⚙️ to configure remote sync.",
+                                );
+                            }
+                        }
+
                         egui::ComboBox::from_id_salt("theme_selector")
                             .selected_text(match self.theme {
                                 GuiTheme::Macchiato => "🎨 Dark",
@@ -495,6 +684,10 @@ impl eframe::App for TodoGuiApp {
                                 );
                             });
                     });
+
+                    if trigger_fetch {
+                        self.fetch_from_server(ctx.clone());
+                    }
                 });
 
                 ui.add_space(10.0);
@@ -1031,6 +1224,91 @@ impl eframe::App for TodoGuiApp {
                 self.import_status_message = None;
             }
         }
+
+        // Backend Sync Settings Window Dialog
+        if self.show_settings_dialog {
+            let mut close_settings = false;
+            let mut do_test_connection = false;
+            let mut do_fetch = false;
+            let mut do_disconnect = false;
+
+            egui::Window::new("⚙️ Backend Sync Settings")
+                .collapsible(false)
+                .resizable(false)
+                .default_width(450.0)
+                .show(ctx, |ui| {
+                    ui.label("Connect to a TaskMaster REST server (e.g. todo server running locally or on VPS):");
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Server URL:");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.server_url)
+                                .hint_text("http://localhost:8000")
+                                .desired_width(280.0),
+                        );
+                    });
+
+                    ui.add_space(8.0);
+                    match &self.sync_status {
+                        SyncStatus::Connected => {
+                            ui.label(
+                                egui::RichText::new("🟢 Status: Connected to backend API")
+                                    .color(egui::Color32::from_rgb(166, 227, 161))
+                                    .strong(),
+                            );
+                        }
+                        SyncStatus::Syncing => {
+                            ui.label(
+                                egui::RichText::new("🔄 Status: Syncing with server...")
+                                    .color(egui::Color32::from_rgb(250, 179, 135)),
+                            );
+                        }
+                        SyncStatus::LocalOnly => {
+                            ui.label(
+                                egui::RichText::new("🟡 Status: Local Storage Only (Offline)")
+                                    .color(egui::Color32::from_rgb(249, 226, 175)),
+                            );
+                        }
+                        SyncStatus::Error(err) => {
+                            ui.label(
+                                egui::RichText::new(format!("🔴 Status Error: {err}"))
+                                    .color(egui::Color32::from_rgb(243, 139, 168)),
+                            );
+                        }
+                    }
+
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("🔍 Test Connection").clicked() {
+                            do_test_connection = true;
+                        }
+                        if ui.button("🔄 Sync Todos Now").clicked() {
+                            do_fetch = true;
+                        }
+                        if ui.button("Local Only").clicked() {
+                            do_disconnect = true;
+                        }
+                        if ui.button("Close").clicked() {
+                            close_settings = true;
+                        }
+                    });
+                });
+
+            if do_test_connection {
+                self.test_connection(ctx.clone());
+            }
+            if do_fetch {
+                self.fetch_from_server(ctx.clone());
+            }
+            if do_disconnect {
+                self.server_url.clear();
+                self.sync_status = SyncStatus::LocalOnly;
+                self.save_todos();
+            }
+            if close_settings {
+                self.show_settings_dialog = false;
+            }
+        }
     }
 }
 
@@ -1096,5 +1374,20 @@ mod tests {
         assert_eq!(app.todos[0].title, "Imported 1");
         assert_eq!(app.todos[1].title, "Imported 2");
         assert!(app.todos[1].completed);
+    }
+
+    #[test]
+    fn test_sync_status_transitions() {
+        let mut app = TodoGuiApp::new(None);
+        assert_eq!(app.sync_status, SyncStatus::LocalOnly);
+
+        app.sync_status = SyncStatus::Connected;
+        assert_eq!(app.sync_status, SyncStatus::Connected);
+
+        app.sync_status = SyncStatus::Error("Connection refused".to_string());
+        match app.sync_status {
+            SyncStatus::Error(ref msg) => assert!(msg.contains("Connection refused")),
+            _ => panic!("Expected SyncStatus::Error"),
+        }
     }
 }

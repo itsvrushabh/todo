@@ -12,6 +12,7 @@ repository = "https://github.com/itsvrushabh/todo"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
+ehttp = "0.7.3"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1.43", features = ["full"] }
