@@ -38,6 +38,11 @@ jobs:
             target: x86_64-apple-darwin
             binary_name: todo
             asset_name: taskmaster-macos-x86_64.tar.gz
+          - os: ubuntu-latest
+            target: wasm32-unknown-unknown
+            binary_name: todo-web.wasm
+            asset_name: taskmaster-web-wasm.tar.gz
+            is_wasm: true
 
     steps:
       - name: Check out repository
@@ -63,15 +68,27 @@ jobs:
 
       - name: Build release binary
         run: |
-          if [ "${{ matrix.use_cross }}" = "true" ]; then
+          if [ "${{ matrix.is_wasm }}" = "true" ]; then
+            cargo build --release --target wasm32-unknown-unknown --bin todo-web
+          elif [ "${{ matrix.use_cross }}" = "true" ]; then
             cross build --release --target ${{ matrix.target }}
           else
             cargo build --release --target ${{ matrix.target }}
           fi
         shell: bash
 
+      - name: Package WASM distribution
+        if: matrix.is_wasm
+        run: |
+          mkdir -p wasm-dist
+          cp target/wasm32-unknown-unknown/release/todo-web.wasm wasm-dist/
+          cp -r static/* wasm-dist/
+          tar -czvf ${{ matrix.asset_name }} -C wasm-dist .
+          sha256sum ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
+        shell: bash
+
       - name: Package binary (Unix)
-        if: matrix.os != 'windows-latest'
+        if: matrix.os != 'windows-latest' && !matrix.is_wasm
         run: |
           cd target/${{ matrix.target }}/release
           tar -czvf ../../../${{ matrix.asset_name }} ${{ matrix.binary_name }}

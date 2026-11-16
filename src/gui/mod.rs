@@ -4,13 +4,13 @@ pub mod types;
 pub mod views;
 
 pub use dialogs::*;
+pub use eframe::egui;
 pub use theme::*;
 pub use types::*;
 pub use views::*;
 
 use crate::models::{Priority, TimeBudgetFilter, TodoItem};
 use chrono::Utc;
-use eframe::egui;
 use std::path::PathBuf;
 
 pub struct TodoGuiApp {
@@ -894,10 +894,12 @@ impl TodoGuiApp {
         });
         list
     }
-}
 
-impl eframe::App for TodoGuiApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    pub fn update_headless(&mut self, ctx: &egui::Context) {
+        self.update_internal(ctx);
+    }
+
+    pub fn update_internal(&mut self, ctx: &egui::Context) {
         // Keyboard Shortcuts
         if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::N)) {
             self.show_add_dialog = true;
@@ -1454,6 +1456,12 @@ impl eframe::App for TodoGuiApp {
         dialogs::render_export_dialog(self, ctx);
         dialogs::render_import_dialog(self, ctx);
         dialogs::render_settings_dialog(self, ctx);
+    }
+}
+
+impl eframe::App for TodoGuiApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.update_internal(ctx);
     }
 }
 
