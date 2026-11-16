@@ -152,7 +152,7 @@ async fn test_static_assets() {
     let res = client.get(format!("{base_url}/")).send().await.unwrap();
     assert_eq!(res.status(), 200);
     let text = res.text().await.unwrap();
-    assert!(text.contains("TaskMaster") || text.contains("<!DOCTYPE html>"));
+    assert!(text.contains("Todo") || text.contains("<!DOCTYPE html>"));
 
     // Manifest
     let res = client

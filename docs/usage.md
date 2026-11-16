@@ -1,12 +1,12 @@
 # User Guide & Platform Usage
 
-This guide covers interacting with TaskMaster via the **Native Desktop GUI**, the **Interactive Terminal UI (TUI)**, the **CLI subcommands**, and the **Pure Rust WebAssembly App**.
+This guide covers interacting with Todo via the **Native Desktop GUI**, the **Interactive Terminal UI (TUI)**, the **CLI subcommands**, and the **WebAssembly App**.
 
 ---
 
 ## 🖥️ Native Desktop Graphical User Interface (GUI)
 
-TaskMaster includes an immediate-mode graphical window built in **100% Rust** using `egui` and `eframe`. It contains zero HTML, zero CSS, and zero JavaScript.
+Todo includes an immediate-mode graphical window built in Rust using `egui` and `eframe`.
 
 Launch the desktop app directly:
 ```bash
@@ -85,7 +85,7 @@ cargo run -- stats
 
 ## 📱 Cross-Platform PWA Installation
 
-TaskMaster embeds a high-performance web client and Progressive Web App directly into the compiled executable.
+Todo embeds a high-performance web client and Progressive Web App directly into the compiled executable.
 
 ### 📱 Android
 1. Start the server (`cargo run --release -- serve`) and scan the terminal ASCII QR code with your camera (or visit `http://<lan-ip>:8000` in **Chrome**).
@@ -96,10 +96,10 @@ TaskMaster embeds a high-performance web client and Progressive Web App directly
 1. Open `http://<lan-ip>:8000` in **Safari**.
 2. Tap the **Share** button (box with upward arrow).
 3. Tap **"Add to Home Screen"** and confirm **"Add"**.
-4. TaskMaster will launch in standalone native app window mode with full touch support.
+4. Todo will launch in standalone native app window mode with full touch support.
 
 ### 💻 Desktop (Linux, Windows, macOS)
 1. Open `http://localhost:8000` in Chrome, Edge, or Brave.
 2. Click the **Install** button in the URL address bar or top app bar.
-3. TaskMaster will install as an independent desktop window pinned to your taskbar/dock and system app launcher.
+3. Todo will install as an independent desktop window pinned to your taskbar/dock and system app launcher.
 4. On Linux desktops, a desktop launcher entry is also provided at `deploy/todo.desktop`.

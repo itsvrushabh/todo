@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: taskmaster-todo
+    name: todo-app
     runtime: docker
     plan: free
     region: oregon

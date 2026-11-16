@@ -2,7 +2,7 @@
 name = "todo"
 version = "0.1.0"
 edition = "2021"
-authors = ["TaskMaster Contributors"]
+authors = ["Todo Contributors"]
 description = "High-performance cross-platform Todo app with Web, TUI, CLI, and PWA mobile/desktop support"
 license = "MIT OR Apache-2.0"
 readme = "README.md"

@@ -301,7 +301,7 @@ pub async fn run_server(
     let lan_ip = get_primary_lan_ip();
 
     println!("\n{}", "=".repeat(64));
-    println!(" 🚀 TaskMaster - Cross-Platform Modern Todo App (Rust)");
+    println!(" 🚀 Todo - Cross-Platform Modern Todo App (Rust)");
     println!("{}", "=".repeat(64));
 
     if host == "0.0.0.0" {
@@ -325,7 +325,7 @@ pub async fn run_server(
 
     println!(" 📁 Persistent Storage:  {storage_path}");
     println!(" ✨ Tip: Tap 'Install' on Android, iPhone, iPad, Windows, Mac, or Linux");
-    println!("        to run TaskMaster as a standalone native app window!");
+    println!("        to run Todo as a standalone native app window!");
     println!(" 💡 Press Ctrl+C to stop the server");
     println!("{}\n", "=".repeat(64));
 

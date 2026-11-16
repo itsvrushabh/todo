@@ -1,6 +1,6 @@
 {
-  "name": "TaskMaster - Modern Todo",
-  "short_name": "TaskMaster",
+  "name": "Todo",
+  "short_name": "Todo",
   "description": "Fast, modern, local-first Todo application for mobile and desktop",
   "start_url": "./",
   "scope": "./",

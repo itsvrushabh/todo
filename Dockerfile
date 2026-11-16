@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for TaskMaster Rust Todo Application
+# Multi-stage Dockerfile for Todo Rust Application
 # Stage 1: Build binary
 FROM rust:slim-bookworm AS builder
 

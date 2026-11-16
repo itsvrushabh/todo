@@ -1,6 +1,6 @@
-# Contributing to TaskMaster
+# Contributing to Todo
 
-Thank you for your interest in contributing to TaskMaster! We follow an **issue-first, trunk-based workflow** to keep our codebase reliable and high quality.
+Thank you for your interest in contributing to Todo! We follow an **issue-first, trunk-based workflow** to keep our codebase reliable and high quality.
 
 ---
 
