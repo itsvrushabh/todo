@@ -1,6 +1,23 @@
 # User Guide & Platform Usage
 
-This guide covers interacting with TaskMaster via the **Interactive Terminal UI (TUI)**, the **CLI subcommands**, and installing the **Progressive Web App (PWA)** across mobile and desktop platforms.
+This guide covers interacting with TaskMaster via the **Native Desktop GUI**, the **Interactive Terminal UI (TUI)**, the **CLI subcommands**, and the **Pure Rust WebAssembly App**.
+
+---
+
+## 🖥️ Native Desktop Graphical User Interface (GUI)
+
+TaskMaster includes an immediate-mode graphical window built in **100% Rust** using `egui` and `eframe`. It contains zero HTML, zero CSS, and zero JavaScript.
+
+Launch the desktop app directly:
+```bash
+cargo run --release -- gui
+```
+
+### ✨ GUI Capabilities
+- **Catppuccin Theme**: Dark-mode palette with mauve and blue accents.
+- **Task Management**: Instant addition, completion toggling, in-place editing, and task deletion.
+- **Real-Time Filters & Search**: Filter by `All`, `Active`, or `Completed` tasks, and search task titles and descriptions.
+- **Progress Gauge**: Visual completion percentage and live task counts.
 
 ---
 

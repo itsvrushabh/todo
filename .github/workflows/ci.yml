@@ -33,6 +33,11 @@ jobs:
       - name: Run Clippy linter
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      - name: Verify WebAssembly target
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo check --target wasm32-unknown-unknown --bin todo-web
+
   test:
     name: Test Suite
     runs-on: ${{ matrix.os }}

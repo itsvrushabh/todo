@@ -157,24 +157,9 @@ async fn test_static_assets() {
         .unwrap();
     assert_eq!(res.status(), 200);
 
-    // Style CSS (both root and /static/)
+    // Fallback static resolution
     let res = client
-        .get(format!("{base_url}/style.css"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(res.status(), 200);
-
-    let res = client
-        .get(format!("{base_url}/static/style.css"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(res.status(), 200);
-
-    // App JS
-    let res = client
-        .get(format!("{base_url}/app.js"))
+        .get(format!("{base_url}/favicon.ico"))
         .send()
         .await
         .unwrap();

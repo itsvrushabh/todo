@@ -50,10 +50,9 @@ pub fn create_router(storage: Arc<JsonTodoStorage>) -> Router {
         .route("/manifest.json", get(serve_manifest))
         .route("/sw.js", get(serve_sw))
         .route("/favicon.ico", get(serve_favicon))
-        .route("/style.css", get(serve_style))
-        .route("/app.js", get(serve_script))
         .route("/icons/{*path}", get(serve_icons))
         .route("/static/{*path}", get(serve_static))
+        .fallback(serve_fallback)
         .layer(CorsLayer::permissive())
         .with_state(storage)
 }
@@ -199,12 +198,13 @@ async fn get_stats(
 }
 
 // Static Assets & PWA Handlers
-async fn serve_style() -> impl IntoResponse {
-    serve_embedded_asset("style.css")
-}
-
-async fn serve_script() -> impl IntoResponse {
-    serve_embedded_asset("app.js")
+async fn serve_fallback(uri: axum::http::Uri) -> impl IntoResponse {
+    let path = uri.path().trim_start_matches('/');
+    if path.is_empty() || path == "index.html" {
+        serve_index().await.into_response()
+    } else {
+        serve_embedded_asset(path)
+    }
 }
 
 async fn serve_icons(Path(path): Path<String>) -> impl IntoResponse {
