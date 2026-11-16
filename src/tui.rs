@@ -175,6 +175,7 @@ impl TuiApp {
                 title,
                 description: desc,
                 priority: Some(self.new_priority),
+                due_date: None,
             });
             self.new_title.clear();
             self.new_desc.clear();
@@ -481,7 +482,31 @@ fn ui(f: &mut Frame, app: &TuiApp) {
 
             let title_span = Span::styled(&item.title, title_style);
 
-            let line = Line::from(vec![status_mark, id_span, priority_span, title_span]);
+            let due_span = match item.due_status() {
+                Some(crate::models::DueStatus::Overdue) => Span::styled(
+                    " [OVERDUE]",
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                ),
+                Some(crate::models::DueStatus::DueToday) => Span::styled(
+                    " [TODAY]",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Some(crate::models::DueStatus::Upcoming) => Span::styled(
+                    format!(" [{}]", item.due_date.as_deref().unwrap_or("")),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                None => Span::raw(""),
+            };
+
+            let line = Line::from(vec![
+                status_mark,
+                id_span,
+                priority_span,
+                title_span,
+                due_span,
+            ]);
             ListItem::new(line)
         })
         .collect();
@@ -603,6 +628,31 @@ fn ui(f: &mut Frame, app: &TuiApp) {
                             .add_modifier(Modifier::BOLD),
                     ),
                     Span::raw(updated_text),
+                ]),
+                Line::from(vec![
+                    Span::styled(
+                        "Due Date: ",
+                        Style::default()
+                            .fg(Color::Gray)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    match item.due_status() {
+                        Some(crate::models::DueStatus::Overdue) => Span::styled(
+                            format!("{} (OVERDUE)", item.due_date.as_deref().unwrap_or("")),
+                            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                        ),
+                        Some(crate::models::DueStatus::DueToday) => Span::styled(
+                            format!("{} (DUE TODAY)", item.due_date.as_deref().unwrap_or("")),
+                            Style::default()
+                                .fg(Color::Yellow)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Some(crate::models::DueStatus::Upcoming) => Span::styled(
+                            item.due_date.as_deref().unwrap_or("").to_string(),
+                            Style::default().fg(Color::Cyan),
+                        ),
+                        None => Span::raw("None"),
+                    },
                 ]),
                 Line::from(""),
                 Line::from(Span::styled(

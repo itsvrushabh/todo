@@ -21,17 +21,20 @@ fn test_storage_creation_and_crud() {
             title: "Test Task 1".to_string(),
             description: Some("Task details".to_string()),
             priority: Some(Priority::High),
+            due_date: Some("2026-12-31".to_string()),
         })
         .unwrap();
     assert_eq!(created.id, 1);
     assert_eq!(created.title, "Test Task 1");
     assert_eq!(created.priority, Priority::High);
+    assert_eq!(created.due_date, Some("2026-12-31".to_string()));
     assert!(!created.completed);
 
     // 3. Get by ID
     let fetched = storage.get_by_id(1).unwrap().expect("Item should exist");
     assert_eq!(fetched.id, 1);
     assert_eq!(fetched.title, "Test Task 1");
+    assert_eq!(fetched.due_date, Some("2026-12-31".to_string()));
 
     // 4. Update item
     let updated = storage
@@ -42,12 +45,14 @@ fn test_storage_creation_and_crud() {
                 description: Some("New desc".to_string()),
                 completed: Some(false),
                 priority: Some(Priority::Low),
+                due_date: Some("2027-01-01".to_string()),
             },
         )
         .unwrap()
         .expect("Should update");
     assert_eq!(updated.title, "Updated Task 1");
     assert_eq!(updated.priority, Priority::Low);
+    assert_eq!(updated.due_date, Some("2027-01-01".to_string()));
 
     // 5. Toggle item
     let toggled = storage.toggle(1).unwrap().expect("Should toggle");
@@ -77,6 +82,7 @@ fn test_filtering_and_search() {
             title: "Buy groceries".to_string(),
             description: Some("Milk and bread".to_string()),
             priority: Some(Priority::High),
+            due_date: None,
         })
         .unwrap();
 
@@ -85,6 +91,7 @@ fn test_filtering_and_search() {
             title: "Write Rust tests".to_string(),
             description: Some("Integration & unit".to_string()),
             priority: Some(Priority::Medium),
+            due_date: None,
         })
         .unwrap();
 
@@ -93,6 +100,7 @@ fn test_filtering_and_search() {
             title: "Clean desk".to_string(),
             description: None,
             priority: Some(Priority::Low),
+            due_date: None,
         })
         .unwrap();
     storage.toggle(task3.id).unwrap();
@@ -131,6 +139,7 @@ fn test_concurrent_access() {
                     title: format!("Thread task {i}"),
                     description: None,
                     priority: Some(Priority::Medium),
+                    due_date: None,
                 })
                 .unwrap();
         }));

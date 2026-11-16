@@ -57,6 +57,8 @@ pub enum Commands {
         desc: Option<String>,
         #[arg(short, long, help = "Priority: low, medium, or high")]
         priority: Option<Priority>,
+        #[arg(long, help = "Optional due date (YYYY-MM-DD or RFC3339)")]
+        due: Option<String>,
     },
     /// Toggle completion status of a task
     Done {
@@ -97,7 +99,24 @@ pub fn list_todos(
                 Priority::Medium => "[MED] ",
                 Priority::Low => "[LOW] ",
             };
-            println!(" [{mark}] #{:<3} {:<6} {}", item.id, p_badge, item.title);
+            let due_badge = match item.due_status() {
+                Some(crate::models::DueStatus::Overdue) => format!(
+                    " \x1b[31;1m[OVERDUE: {}]\x1b[0m",
+                    item.due_date.as_deref().unwrap_or("")
+                ),
+                Some(crate::models::DueStatus::DueToday) => {
+                    " \x1b[33;1m[DUE TODAY]\x1b[0m".to_string()
+                }
+                Some(crate::models::DueStatus::Upcoming) => format!(
+                    " \x1b[36m[Due: {}]\x1b[0m",
+                    item.due_date.as_deref().unwrap_or("")
+                ),
+                None => String::new(),
+            };
+            println!(
+                " [{mark}] #{:<3} {:<6} {}{due_badge}",
+                item.id, p_badge, item.title
+            );
             if let Some(ref desc) = item.description {
                 if !desc.is_empty() {
                     println!("       ↳ {desc}");
@@ -120,11 +139,13 @@ pub fn add_todo(
     title: String,
     description: Option<String>,
     priority: Option<Priority>,
+    due_date: Option<String>,
 ) -> Result<TodoItem, Box<dyn std::error::Error>> {
     let item = storage.create(TodoCreate {
         title,
         description,
         priority,
+        due_date,
     })?;
     println!("✅ Added task #{}: '{}'", item.id, item.title);
     Ok(item)

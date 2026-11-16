@@ -17,11 +17,13 @@ pub struct TodoGuiApp {
     pub new_title: String,
     pub new_description: String,
     pub new_priority: Priority,
+    pub new_due_date: String,
     pub show_add_dialog: bool,
     pub editing_id: Option<i64>,
     pub edit_title: String,
     pub edit_description: String,
     pub edit_priority: Priority,
+    pub edit_due_date: String,
     pub storage_path: Option<PathBuf>,
 }
 
@@ -34,11 +36,13 @@ impl TodoGuiApp {
             new_title: String::new(),
             new_description: String::new(),
             new_priority: Priority::Medium,
+            new_due_date: String::new(),
             show_add_dialog: false,
             editing_id: None,
             edit_title: String::new(),
             edit_description: String::new(),
             edit_priority: Priority::Medium,
+            edit_due_date: String::new(),
             storage_path,
         };
         app.load_todos();
@@ -137,16 +141,18 @@ impl TodoGuiApp {
             Some(self.new_description.trim().to_string())
         };
 
-        self.todos.push(TodoItem::new(
-            new_id,
-            trimmed.to_string(),
-            desc,
-            self.new_priority,
-        ));
+        let mut item = TodoItem::new(new_id, trimmed.to_string(), desc, self.new_priority);
+        let due_trimmed = self.new_due_date.trim();
+        if !due_trimmed.is_empty() {
+            item.due_date = Some(due_trimmed.to_string());
+        }
+
+        self.todos.push(item);
 
         self.new_title.clear();
         self.new_description.clear();
         self.new_priority = Priority::Medium;
+        self.new_due_date.clear();
         self.show_add_dialog = false;
         self.save_todos();
     }
@@ -170,6 +176,7 @@ impl TodoGuiApp {
             self.edit_title = todo.title.clone();
             self.edit_description = todo.description.clone().unwrap_or_default();
             self.edit_priority = todo.priority;
+            self.edit_due_date = todo.due_date.clone().unwrap_or_default();
         }
     }
 
@@ -185,12 +192,19 @@ impl TodoGuiApp {
                         Some(self.edit_description.trim().to_string())
                     };
                     todo.priority = self.edit_priority;
+                    let due_trimmed = self.edit_due_date.trim();
+                    todo.due_date = if due_trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(due_trimmed.to_string())
+                    };
                     todo.updated_at = Some(Utc::now().to_rfc3339());
                     self.save_todos();
                 }
             }
         }
         self.editing_id = None;
+        self.edit_due_date.clear();
     }
 
     pub fn clear_completed(&mut self) {
@@ -433,6 +447,15 @@ impl eframe::App for TodoGuiApp {
                                     });
                             });
 
+                            ui.horizontal(|ui| {
+                                ui.label("Due Date:");
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut self.new_due_date)
+                                        .hint_text("YYYY-MM-DD")
+                                        .desired_width(160.0),
+                                );
+                            });
+
                             ui.add_space(8.0);
                             ui.horizontal(|ui| {
                                 if ui
@@ -512,6 +535,15 @@ impl eframe::App for TodoGuiApp {
                                             "High",
                                         );
                                     });
+                            });
+
+                            ui.horizontal(|ui| {
+                                ui.label("Due Date:");
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut self.edit_due_date)
+                                        .hint_text("YYYY-MM-DD")
+                                        .desired_width(160.0),
+                                );
                             });
 
                             ui.add_space(8.0);
@@ -632,6 +664,39 @@ impl eframe::App for TodoGuiApp {
                                                                 .color(desc_color),
                                                         );
                                                     }
+                                                }
+
+                                                if let Some(status) = todo.due_status() {
+                                                    let (due_txt, due_color) = match status {
+                                                        crate::models::DueStatus::Overdue => (
+                                                            format!(
+                                                                "⚠️ Overdue ({})",
+                                                                todo.due_date
+                                                                    .as_deref()
+                                                                    .unwrap_or("")
+                                                            ),
+                                                            egui::Color32::from_rgb(243, 139, 168),
+                                                        ),
+                                                        crate::models::DueStatus::DueToday => (
+                                                            "⏳ Due Today".to_string(),
+                                                            egui::Color32::from_rgb(250, 179, 135),
+                                                        ),
+                                                        crate::models::DueStatus::Upcoming => (
+                                                            format!(
+                                                                "📅 Due: {}",
+                                                                todo.due_date
+                                                                    .as_deref()
+                                                                    .unwrap_or("")
+                                                            ),
+                                                            egui::Color32::from_rgb(137, 180, 250),
+                                                        ),
+                                                    };
+                                                    ui.label(
+                                                        egui::RichText::new(due_txt)
+                                                            .size(11.0)
+                                                            .color(due_color)
+                                                            .strong(),
+                                                    );
                                                 }
                                             });
 
