@@ -144,6 +144,9 @@ pub struct TodoGuiApp {
     pub storage_path: Option<PathBuf>,
     pub theme: GuiTheme,
     pub adaptive_mode: AdaptiveMode,
+    pub calm_spotlight_idx: usize,
+    pub desktop_board_view: bool,
+    pub mobile_compact_meta: bool,
     pub show_export_dialog: bool,
     pub export_markdown: bool,
     pub show_import_dialog: bool,
@@ -233,6 +236,9 @@ impl TodoGuiApp {
             storage_path,
             theme: GuiTheme::Macchiato,
             adaptive_mode: AdaptiveMode::default(),
+            calm_spotlight_idx: 0,
+            desktop_board_view: true,
+            mobile_compact_meta: true,
             show_export_dialog: false,
             export_markdown: false,
             show_import_dialog: false,
@@ -702,6 +708,50 @@ impl TodoGuiApp {
                 }
             })
             .collect()
+    }
+
+    pub fn update_priority(&mut self, id: i64, new_priority: Priority) {
+        if let Some(todo) = self.todos.iter_mut().find(|t| t.id == id) {
+            todo.priority = new_priority;
+            todo.updated_at = Some(Utc::now().to_rfc3339());
+
+            if !self.server_url.trim().is_empty() {
+                self.pending_mutations
+                    .push(crate::models::PendingMutation::Update {
+                        id,
+                        update: crate::models::TodoUpdate {
+                            title: None,
+                            description: None,
+                            completed: None,
+                            priority: Some(new_priority),
+                            due_date: None,
+                            recurrence: None,
+                        },
+                    });
+            }
+
+            self.save_todos();
+        }
+    }
+
+    pub fn mobile_focus_todos(&self) -> Vec<&TodoItem> {
+        let mut list = self.filtered_todos();
+        list.sort_by_key(|t| {
+            if t.completed {
+                100
+            } else if t.due_status() == Some(crate::models::DueStatus::Overdue) {
+                0
+            } else if t.priority == Priority::High {
+                1
+            } else if t.due_status() == Some(crate::models::DueStatus::DueToday) {
+                2
+            } else if t.priority == Priority::Medium {
+                3
+            } else {
+                4
+            }
+        });
+        list
     }
 }
 
@@ -1414,6 +1464,19 @@ impl eframe::App for TodoGuiApp {
                                             .strong(),
                                         );
                                     }
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            let btn_label = if self.desktop_board_view {
+                                                "📋 Switch to List View"
+                                            } else {
+                                                "📊 Switch to Planning Board"
+                                            };
+                                            if ui.button(btn_label).clicked() {
+                                                self.desktop_board_view = !self.desktop_board_view;
+                                            }
+                                        },
+                                    );
                                 });
                             });
                         ui.add_space(8.0);
@@ -1434,10 +1497,24 @@ impl eframe::App for TodoGuiApp {
                                     ui.separator();
                                     ui.label(
                                         egui::RichText::new(
-                                            "Touch-optimized view • Active priorities surfaced",
+                                            "Touch-optimized • Priority action hierarchy",
                                         )
                                         .size(11.0)
                                         .color(egui::Color32::from_rgb(166, 173, 200)),
+                                    );
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            let meta_btn = if self.mobile_compact_meta {
+                                                "🔍 Expand Details"
+                                            } else {
+                                                "⚡ Compact View"
+                                            };
+                                            if ui.button(meta_btn).clicked() {
+                                                self.mobile_compact_meta =
+                                                    !self.mobile_compact_meta;
+                                            }
+                                        },
                                     );
                                 });
                             });
@@ -1459,7 +1536,7 @@ impl eframe::App for TodoGuiApp {
                                     ui.separator();
                                     ui.label(
                                         egui::RichText::new(
-                                            "Reduced visual stimulation • One task at a time",
+                                            "Distraction-free • Step-by-step progress",
                                         )
                                         .size(11.0)
                                         .color(egui::Color32::from_rgb(166, 173, 200)),
@@ -1491,140 +1568,738 @@ impl eframe::App for TodoGuiApp {
                     let mut toggled_id = None;
                     let mut delete_id = None;
                     let mut edit_id = None;
+                    let mut priority_change: Option<(i64, Priority)> = None;
+                    let mut next_spotlight_idx = None;
 
-                    egui::ScrollArea::vertical()
-                        .auto_shrink([false; 2])
-                        .show(ui, |ui| {
-                            for todo in filtered {
-                                let card_bg = self.theme.card_bg(todo.completed);
+                    match current_mode {
+                        AdaptiveMode::DesktopPlanning if self.desktop_board_view => {
+                            // Desktop Multi-Column Planning Board
+                            let high_todos: Vec<&TodoItem> = filtered
+                                .iter()
+                                .copied()
+                                .filter(|t| !t.completed && t.priority == Priority::High)
+                                .collect();
+                            let med_todos: Vec<&TodoItem> = filtered
+                                .iter()
+                                .copied()
+                                .filter(|t| !t.completed && t.priority == Priority::Medium)
+                                .collect();
+                            let low_todos: Vec<&TodoItem> = filtered
+                                .iter()
+                                .copied()
+                                .filter(|t| !t.completed && t.priority == Priority::Low)
+                                .collect();
+                            let done_todos: Vec<&TodoItem> = filtered
+                                .iter()
+                                .copied()
+                                .filter(|t| t.completed)
+                                .collect();
 
+                            let mut render_board_col = |col_ui: &mut egui::Ui,
+                                                        title: &str,
+                                                        title_color: egui::Color32,
+                                                        items: &[&TodoItem],
+                                                        demote_to: Option<Priority>,
+                                                        promote_to: Option<Priority>,
+                                                        is_done_col: bool| {
                                 egui::Frame::new()
-                                    .fill(card_bg)
-                                    .corner_radius(egui::CornerRadius::same(8))
-                                    .stroke(egui::Stroke::new(
-                                        1.0_f32,
-                                        self.theme.card_border(todo.completed),
-                                    ))
-                                    .inner_margin(egui::Margin::symmetric(14, 10))
-                                    .show(ui, |ui| {
+                                    .fill(self.theme.top_panel_bg())
+                                    .corner_radius(egui::CornerRadius::same(6))
+                                    .inner_margin(egui::Margin::symmetric(10, 8))
+                                    .show(col_ui, |ui| {
                                         ui.horizontal(|ui| {
-                                            // Checkbox
-                                            let mut comp = todo.completed;
-                                            if ui.checkbox(&mut comp, "").changed() {
-                                                toggled_id = Some(todo.id);
-                                            }
-
-                                            // Priority Chip
-                                            let (prio_text, prio_color) = match todo.priority {
-                                                Priority::High => {
-                                                    ("HIGH", egui::Color32::from_rgb(243, 139, 168))
-                                                }
-                                                Priority::Medium => {
-                                                    ("MED", egui::Color32::from_rgb(250, 179, 135))
-                                                }
-                                                Priority::Low => {
-                                                    ("LOW", egui::Color32::from_rgb(166, 227, 161))
-                                                }
-                                            };
                                             ui.label(
-                                                egui::RichText::new(format!("[{prio_text}]"))
-                                                    .color(prio_color)
-                                                    .size(11.0)
-                                                    .strong(),
+                                                egui::RichText::new(title)
+                                                    .strong()
+                                                    .size(13.0)
+                                                    .color(title_color),
                                             );
-
-                                            // Task Content
-                                            ui.vertical(|ui| {
-                                                let mut title_text =
-                                                    egui::RichText::new(&todo.title).size(15.0);
-                                                if todo.completed {
-                                                    title_text = title_text.strikethrough().color(
-                                                        egui::Color32::from_rgb(108, 112, 134),
-                                                    );
-                                                } else {
-                                                    title_text = title_text.strong().color(
-                                                        egui::Color32::from_rgb(205, 214, 244),
-                                                    );
-                                                }
-                                                ui.label(title_text);
-
-                                                if let Some(ref desc) = todo.description {
-                                                    if !desc.is_empty() {
-                                                        let desc_color = if todo.completed {
-                                                            egui::Color32::from_rgb(88, 91, 112)
-                                                        } else {
-                                                            egui::Color32::from_rgb(166, 173, 200)
-                                                        };
-                                                        ui.label(
-                                                            egui::RichText::new(desc)
-                                                                .size(12.0)
-                                                                .color(desc_color),
-                                                        );
-                                                    }
-                                                }
-
-                                                if let Some(status) = todo.due_status() {
-                                                    let (due_txt, due_color) = match status {
-                                                        crate::models::DueStatus::Overdue => (
-                                                            format!(
-                                                                "⚠️ Overdue ({})",
-                                                                todo.due_date
-                                                                    .as_deref()
-                                                                    .unwrap_or("")
-                                                            ),
-                                                            egui::Color32::from_rgb(243, 139, 168),
-                                                        ),
-                                                        crate::models::DueStatus::DueToday => (
-                                                            "⏳ Due Today".to_string(),
-                                                            egui::Color32::from_rgb(250, 179, 135),
-                                                        ),
-                                                        crate::models::DueStatus::Upcoming => (
-                                                            format!(
-                                                                "📅 Due: {}",
-                                                                todo.due_date
-                                                                    .as_deref()
-                                                                    .unwrap_or("")
-                                                            ),
-                                                            egui::Color32::from_rgb(137, 180, 250),
-                                                        ),
-                                                    };
-                                                    ui.label(
-                                                        egui::RichText::new(due_txt)
-                                                            .size(11.0)
-                                                            .color(due_color)
-                                                            .strong(),
-                                                    );
-                                                }
-
-                                                if let Some(ref rec) = todo.recurrence {
-                                                    ui.label(
-                                                        egui::RichText::new(format!("🔁 {rec}"))
-                                                            .size(11.0)
-                                                            .color(egui::Color32::from_rgb(
-                                                                203, 166, 247,
-                                                            ))
-                                                            .strong(),
-                                                    );
-                                                }
-                                            });
-
-                                            // Action Buttons (Right-aligned)
                                             ui.with_layout(
                                                 egui::Layout::right_to_left(egui::Align::Center),
                                                 |ui| {
-                                                    if ui.button("🗑️").clicked() {
-                                                        delete_id = Some(todo.id);
-                                                    }
-                                                    if ui.button("✏️").clicked() {
-                                                        edit_id = Some(todo.id);
-                                                    }
+                                                    ui.label(
+                                                        egui::RichText::new(format!(
+                                                            "{}",
+                                                            items.len()
+                                                        ))
+                                                        .size(11.0)
+                                                        .color(egui::Color32::from_rgb(
+                                                            166, 173, 200,
+                                                        )),
+                                                    );
                                                 },
                                             );
                                         });
                                     });
-                                ui.add_space(6.0);
+                                col_ui.add_space(6.0);
+
+                                egui::ScrollArea::vertical()
+                                    .id_salt(title)
+                                    .auto_shrink([false; 2])
+                                    .show(col_ui, |ui| {
+                                        for todo in items {
+                                            let card_bg = self.theme.card_bg(todo.completed);
+                                            egui::Frame::new()
+                                                .fill(card_bg)
+                                                .corner_radius(egui::CornerRadius::same(6))
+                                                .stroke(egui::Stroke::new(
+                                                    1.0_f32,
+                                                    self.theme.card_border(todo.completed),
+                                                ))
+                                                .inner_margin(egui::Margin::symmetric(10, 8))
+                                                .show(ui, |ui| {
+                                                    ui.horizontal(|ui| {
+                                                        let mut comp = todo.completed;
+                                                        if ui.checkbox(&mut comp, "").changed() {
+                                                            toggled_id = Some(todo.id);
+                                                        }
+                                                        let title_text = if todo.completed {
+                                                            egui::RichText::new(&todo.title)
+                                                                .size(13.5)
+                                                                .strikethrough()
+                                                                .color(egui::Color32::from_rgb(
+                                                                    108, 112, 134,
+                                                                ))
+                                                        } else {
+                                                            egui::RichText::new(&todo.title)
+                                                                .size(13.5)
+                                                                .strong()
+                                                                .color(egui::Color32::from_rgb(
+                                                                    205, 214, 244,
+                                                                ))
+                                                        };
+                                                        ui.label(title_text);
+                                                    });
+
+                                                    if let Some(ref desc) = todo.description {
+                                                        if !desc.is_empty() {
+                                                            ui.add_space(2.0);
+                                                            ui.label(
+                                                                egui::RichText::new(desc)
+                                                                    .size(11.0)
+                                                                    .color(egui::Color32::from_rgb(
+                                                                        147, 153, 178,
+                                                                    )),
+                                                            );
+                                                        }
+                                                    }
+
+                                                    if let Some(status) = todo.due_status() {
+                                                        let (due_txt, due_color) = match status {
+                                                            crate::models::DueStatus::Overdue => (
+                                                                format!(
+                                                                    "⚠️ Due {}",
+                                                                    todo.due_date
+                                                                        .as_deref()
+                                                                        .unwrap_or("")
+                                                                ),
+                                                                egui::Color32::from_rgb(
+                                                                    243, 139, 168,
+                                                                ),
+                                                            ),
+                                                            crate::models::DueStatus::DueToday => (
+                                                                "⏳ Today".to_string(),
+                                                                egui::Color32::from_rgb(
+                                                                    250, 179, 135,
+                                                                ),
+                                                            ),
+                                                            crate::models::DueStatus::Upcoming => (
+                                                                format!(
+                                                                    "📅 {}",
+                                                                    todo.due_date
+                                                                        .as_deref()
+                                                                        .unwrap_or("")
+                                                                ),
+                                                                egui::Color32::from_rgb(
+                                                                    137, 180, 250,
+                                                                ),
+                                                            ),
+                                                        };
+                                                        ui.label(
+                                                            egui::RichText::new(due_txt)
+                                                                .size(10.5)
+                                                                .color(due_color)
+                                                                .strong(),
+                                                        );
+                                                    }
+
+                                                    ui.add_space(4.0);
+                                                    ui.horizontal(|ui| {
+                                                        if !is_done_col {
+                                                            if let Some(target) = promote_to {
+                                                                if ui
+                                                                    .small_button("▲")
+                                                                    .on_hover_text(
+                                                                        "Increase priority",
+                                                                    )
+                                                                    .clicked()
+                                                                {
+                                                                    priority_change =
+                                                                        Some((todo.id, target));
+                                                                }
+                                                            }
+                                                            if let Some(target) = demote_to {
+                                                                if ui
+                                                                    .small_button("▼")
+                                                                    .on_hover_text(
+                                                                        "Decrease priority",
+                                                                    )
+                                                                    .clicked()
+                                                                {
+                                                                    priority_change =
+                                                                        Some((todo.id, target));
+                                                                }
+                                                            }
+                                                        }
+                                                        ui.with_layout(
+                                                            egui::Layout::right_to_left(
+                                                                egui::Align::Center,
+                                                            ),
+                                                            |ui| {
+                                                                if ui.small_button("🗑️").clicked() {
+                                                                    delete_id = Some(todo.id);
+                                                                }
+                                                                if ui.small_button("✏️").clicked() {
+                                                                    edit_id = Some(todo.id);
+                                                                }
+                                                            },
+                                                        );
+                                                    });
+                                                });
+                                            ui.add_space(6.0);
+                                        }
+                                    });
+                            };
+
+                            ui.columns(4, |cols| {
+                                render_board_col(
+                                    &mut cols[0],
+                                    "🔴 High Priority",
+                                    egui::Color32::from_rgb(243, 139, 168),
+                                    &high_todos,
+                                    Some(Priority::Medium),
+                                    None,
+                                    false,
+                                );
+                                render_board_col(
+                                    &mut cols[1],
+                                    "🟡 Medium Priority",
+                                    egui::Color32::from_rgb(250, 179, 135),
+                                    &med_todos,
+                                    Some(Priority::Low),
+                                    Some(Priority::High),
+                                    false,
+                                );
+                                render_board_col(
+                                    &mut cols[2],
+                                    "🟢 Low Priority",
+                                    egui::Color32::from_rgb(166, 227, 161),
+                                    &low_todos,
+                                    None,
+                                    Some(Priority::Medium),
+                                    false,
+                                );
+                                render_board_col(
+                                    &mut cols[3],
+                                    "✅ Completed",
+                                    egui::Color32::from_rgb(147, 153, 178),
+                                    &done_todos,
+                                    None,
+                                    None,
+                                    true,
+                                );
+                            });
+                        }
+                        AdaptiveMode::MobileFocus => {
+                            // Touch-optimized Mobile Focus layout with action-first hierarchy
+                            let mobile_items = self.mobile_focus_todos();
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false; 2])
+                                .show(ui, |ui| {
+                                    for todo in mobile_items {
+                                        let card_bg = self.theme.card_bg(todo.completed);
+
+                                        egui::Frame::new()
+                                            .fill(card_bg)
+                                            .corner_radius(egui::CornerRadius::same(10))
+                                            .stroke(egui::Stroke::new(
+                                                1.0_f32,
+                                                self.theme.card_border(todo.completed),
+                                            ))
+                                            .inner_margin(egui::Margin::symmetric(14, 12))
+                                            .show(ui, |ui| {
+                                                ui.horizontal(|ui| {
+                                                    // Enlarged Touch Target Checkbox
+                                                    let mut comp = todo.completed;
+                                                    if ui
+                                                        .add_sized(
+                                                            [26.0, 26.0],
+                                                            egui::Checkbox::new(&mut comp, ""),
+                                                        )
+                                                        .changed()
+                                                    {
+                                                        toggled_id = Some(todo.id);
+                                                    }
+
+                                                    // Priority Chip
+                                                    let (prio_text, prio_color) = match todo.priority {
+                                                        Priority::High => (
+                                                            "HIGH",
+                                                            egui::Color32::from_rgb(243, 139, 168),
+                                                        ),
+                                                        Priority::Medium => (
+                                                            "MED",
+                                                            egui::Color32::from_rgb(250, 179, 135),
+                                                        ),
+                                                        Priority::Low => (
+                                                            "LOW",
+                                                            egui::Color32::from_rgb(166, 227, 161),
+                                                        ),
+                                                    };
+                                                    ui.label(
+                                                        egui::RichText::new(format!("[{prio_text}]"))
+                                                            .color(prio_color)
+                                                            .size(11.0)
+                                                            .strong(),
+                                                    );
+
+                                                    // Task Details
+                                                    ui.vertical(|ui| {
+                                                        let mut title_text = egui::RichText::new(&todo.title)
+                                                            .size(15.5);
+                                                        if todo.completed {
+                                                            title_text = title_text.strikethrough().color(
+                                                                egui::Color32::from_rgb(108, 112, 134),
+                                                            );
+                                                        } else {
+                                                            title_text = title_text.strong().color(
+                                                                egui::Color32::from_rgb(205, 214, 244),
+                                                            );
+                                                        }
+                                                        ui.label(title_text);
+
+                                                        if !self.mobile_compact_meta {
+                                                            if let Some(ref desc) = todo.description {
+                                                                if !desc.is_empty() {
+                                                                    ui.label(
+                                                                        egui::RichText::new(desc)
+                                                                            .size(12.0)
+                                                                            .color(egui::Color32::from_rgb(
+                                                                                166, 173, 200,
+                                                                            )),
+                                                                    );
+                                                                }
+                                                            }
+                                                        }
+
+                                                        if let Some(status) = todo.due_status() {
+                                                            let (due_txt, due_color) = match status {
+                                                                crate::models::DueStatus::Overdue => (
+                                                                    format!(
+                                                                        "⚠️ Overdue ({})",
+                                                                        todo.due_date
+                                                                            .as_deref()
+                                                                            .unwrap_or("")
+                                                                    ),
+                                                                    egui::Color32::from_rgb(243, 139, 168),
+                                                                ),
+                                                                crate::models::DueStatus::DueToday => (
+                                                                    "⏳ Due Today".to_string(),
+                                                                    egui::Color32::from_rgb(250, 179, 135),
+                                                                ),
+                                                                crate::models::DueStatus::Upcoming => (
+                                                                    format!(
+                                                                        "📅 {}",
+                                                                        todo.due_date
+                                                                            .as_deref()
+                                                                            .unwrap_or("")
+                                                                    ),
+                                                                    egui::Color32::from_rgb(137, 180, 250),
+                                                                ),
+                                                            };
+                                                            ui.label(
+                                                                egui::RichText::new(due_txt)
+                                                                    .size(11.0)
+                                                                    .color(due_color)
+                                                                    .strong(),
+                                                            );
+                                                        }
+
+                                                        if let Some(ref rec) = todo.recurrence {
+                                                            ui.label(
+                                                                egui::RichText::new(format!("🔁 {rec}"))
+                                                                    .size(11.0)
+                                                                    .color(egui::Color32::from_rgb(
+                                                                        203, 166, 247,
+                                                                    ))
+                                                                    .strong(),
+                                                            );
+                                                        }
+                                                    });
+
+                                                    // Right Touch Action Buttons
+                                                    ui.with_layout(
+                                                        egui::Layout::right_to_left(egui::Align::Center),
+                                                        |ui| {
+                                                            if ui
+                                                                .add_sized(
+                                                                    [38.0, 32.0],
+                                                                    egui::Button::new("🗑️"),
+                                                                )
+                                                                .clicked()
+                                                            {
+                                                                delete_id = Some(todo.id);
+                                                            }
+                                                            if ui
+                                                                .add_sized(
+                                                                    [38.0, 32.0],
+                                                                    egui::Button::new("✏️"),
+                                                                )
+                                                                .clicked()
+                                                            {
+                                                                edit_id = Some(todo.id);
+                                                            }
+                                                            let quick_action =
+                                                                if todo.completed { "↩" } else { "✓" };
+                                                            if ui
+                                                                .add_sized(
+                                                                    [44.0, 32.0],
+                                                                    egui::Button::new(quick_action),
+                                                                )
+                                                                .clicked()
+                                                            {
+                                                                toggled_id = Some(todo.id);
+                                                            }
+                                                        },
+                                                    );
+                                                });
+                                            });
+                                        ui.add_space(6.0);
+                                    }
+                                });
+                        }
+                        AdaptiveMode::Calm => {
+                            // Calm Mode: Step-by-Step Spotlight Card + Serene Checklist
+                            let active_todos: Vec<&TodoItem> =
+                                filtered.iter().copied().filter(|t| !t.completed).collect();
+
+                            if !active_todos.is_empty() {
+                                let spotlight_idx = self
+                                    .calm_spotlight_idx
+                                    .min(active_todos.len().saturating_sub(1));
+                                let current_spotlight = active_todos[spotlight_idx];
+
+                                egui::Frame::new()
+                                    .fill(egui::Color32::from_rgb(30, 40, 44))
+                                    .corner_radius(egui::CornerRadius::same(10))
+                                    .stroke(egui::Stroke::new(
+                                        1.5_f32,
+                                        egui::Color32::from_rgb(148, 226, 213),
+                                    ))
+                                    .inner_margin(egui::Margin::symmetric(20, 16))
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.label(
+                                                egui::RichText::new(format!(
+                                                    "🌿 Step-by-Step Focus ({} of {})",
+                                                    spotlight_idx + 1,
+                                                    active_todos.len()
+                                                ))
+                                                .strong()
+                                                .size(13.0)
+                                                .color(egui::Color32::from_rgb(148, 226, 213)),
+                                            );
+                                        });
+                                        ui.add_space(8.0);
+                                        ui.label(
+                                            egui::RichText::new(&current_spotlight.title)
+                                                .size(18.0)
+                                                .strong()
+                                                .color(egui::Color32::from_rgb(205, 214, 244)),
+                                        );
+                                        if let Some(ref desc) = current_spotlight.description {
+                                            if !desc.is_empty() {
+                                                ui.add_space(4.0);
+                                                ui.label(
+                                                    egui::RichText::new(desc)
+                                                        .size(13.0)
+                                                        .color(egui::Color32::from_rgb(
+                                                            166, 173, 200,
+                                                        )),
+                                                );
+                                            }
+                                        }
+                                        if let Some(ref due) = current_spotlight.due_date {
+                                            ui.add_space(4.0);
+                                            ui.label(
+                                                egui::RichText::new(format!("📅 Due: {due}"))
+                                                    .size(12.0)
+                                                    .color(egui::Color32::from_rgb(148, 226, 213)),
+                                            );
+                                        }
+                                        ui.add_space(12.0);
+                                        ui.horizontal(|ui| {
+                                            if ui
+                                                .add_sized(
+                                                    [160.0, 32.0],
+                                                    egui::Button::new("✨ Complete & Next"),
+                                                )
+                                                .clicked()
+                                            {
+                                                toggled_id = Some(current_spotlight.id);
+                                            }
+                                            if spotlight_idx > 0
+                                                && ui.button("⏮️ Previous").clicked()
+                                            {
+                                                next_spotlight_idx = Some(spotlight_idx - 1);
+                                            }
+                                            if spotlight_idx + 1 < active_todos.len()
+                                                && ui.button("⏭️ Next").clicked()
+                                            {
+                                                next_spotlight_idx = Some(spotlight_idx + 1);
+                                            }
+                                        });
+                                    });
+                                ui.add_space(12.0);
                             }
-                        });
+
+                            // Serene Checklist
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false; 2])
+                                .show(ui, |ui| {
+                                    for todo in filtered {
+                                        let card_bg = self.theme.card_bg(todo.completed);
+
+                                        egui::Frame::new()
+                                            .fill(card_bg)
+                                            .corner_radius(egui::CornerRadius::same(8))
+                                            .stroke(egui::Stroke::new(
+                                                1.0_f32,
+                                                self.theme.card_border(todo.completed),
+                                            ))
+                                            .inner_margin(egui::Margin::symmetric(14, 10))
+                                            .show(ui, |ui| {
+                                                ui.horizontal(|ui| {
+                                                    let mut comp = todo.completed;
+                                                    if ui.checkbox(&mut comp, "").changed() {
+                                                        toggled_id = Some(todo.id);
+                                                    }
+
+                                                    // Subdued Priority Chip in Calm mode
+                                                    let (prio_text, prio_color) = match todo.priority {
+                                                        Priority::High => (
+                                                            "High",
+                                                            egui::Color32::from_rgb(243, 139, 168),
+                                                        ),
+                                                        Priority::Medium => (
+                                                            "Med",
+                                                            egui::Color32::from_rgb(250, 179, 135),
+                                                        ),
+                                                        Priority::Low => (
+                                                            "Low",
+                                                            egui::Color32::from_rgb(166, 227, 161),
+                                                        ),
+                                                    };
+                                                    ui.label(
+                                                        egui::RichText::new(format!("[{prio_text}]"))
+                                                            .color(prio_color)
+                                                            .size(11.0),
+                                                    );
+
+                                                    ui.vertical(|ui| {
+                                                        let mut title_text = egui::RichText::new(&todo.title)
+                                                            .size(14.5);
+                                                        if todo.completed {
+                                                            title_text = title_text.strikethrough().color(
+                                                                egui::Color32::from_rgb(108, 112, 134),
+                                                            );
+                                                        } else {
+                                                            title_text = title_text.color(
+                                                                egui::Color32::from_rgb(205, 214, 244),
+                                                            );
+                                                        }
+                                                        ui.label(title_text);
+
+                                                        if let Some(ref desc) = todo.description {
+                                                            if !desc.is_empty() {
+                                                                ui.label(
+                                                                    egui::RichText::new(desc)
+                                                                        .size(12.0)
+                                                                        .color(egui::Color32::from_rgb(
+                                                                            147, 153, 178,
+                                                                        )),
+                                                                );
+                                                            }
+                                                        }
+
+                                                        if let Some(ref due) = todo.due_date {
+                                                            ui.label(
+                                                                egui::RichText::new(format!("📅 {due}"))
+                                                                    .size(11.0)
+                                                                    .color(egui::Color32::from_rgb(
+                                                                        148, 226, 213,
+                                                                    )),
+                                                            );
+                                                        }
+                                                    });
+
+                                                    ui.with_layout(
+                                                        egui::Layout::right_to_left(egui::Align::Center),
+                                                        |ui| {
+                                                            if ui.button("🗑️").clicked() {
+                                                                delete_id = Some(todo.id);
+                                                            }
+                                                            if ui.button("✏️").clicked() {
+                                                                edit_id = Some(todo.id);
+                                                            }
+                                                        },
+                                                    );
+                                                });
+                                            });
+                                        ui.add_space(6.0);
+                                    }
+                                });
+                        }
+                        _ => {
+                            // Standard Unified List (Fallback / Desktop List View)
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false; 2])
+                                .show(ui, |ui| {
+                                    for todo in filtered {
+                                        let card_bg = self.theme.card_bg(todo.completed);
+
+                                        egui::Frame::new()
+                                            .fill(card_bg)
+                                            .corner_radius(egui::CornerRadius::same(8))
+                                            .stroke(egui::Stroke::new(
+                                                1.0_f32,
+                                                self.theme.card_border(todo.completed),
+                                            ))
+                                            .inner_margin(egui::Margin::symmetric(14, 10))
+                                            .show(ui, |ui| {
+                                                ui.horizontal(|ui| {
+                                                    // Checkbox
+                                                    let mut comp = todo.completed;
+                                                    if ui.checkbox(&mut comp, "").changed() {
+                                                        toggled_id = Some(todo.id);
+                                                    }
+
+                                                    // Priority Chip
+                                                    let (prio_text, prio_color) = match todo.priority {
+                                                        Priority::High => (
+                                                            "HIGH",
+                                                            egui::Color32::from_rgb(243, 139, 168),
+                                                        ),
+                                                        Priority::Medium => (
+                                                            "MED",
+                                                            egui::Color32::from_rgb(250, 179, 135),
+                                                        ),
+                                                        Priority::Low => (
+                                                            "LOW",
+                                                            egui::Color32::from_rgb(166, 227, 161),
+                                                        ),
+                                                    };
+                                                    ui.label(
+                                                        egui::RichText::new(format!("[{prio_text}]"))
+                                                            .color(prio_color)
+                                                            .size(11.0)
+                                                            .strong(),
+                                                    );
+
+                                                    // Task Content
+                                                    ui.vertical(|ui| {
+                                                        let mut title_text = egui::RichText::new(&todo.title)
+                                                            .size(15.0);
+                                                        if todo.completed {
+                                                            title_text = title_text.strikethrough().color(
+                                                                egui::Color32::from_rgb(108, 112, 134),
+                                                            );
+                                                        } else {
+                                                            title_text = title_text.strong().color(
+                                                                egui::Color32::from_rgb(205, 214, 244),
+                                                            );
+                                                        }
+                                                        ui.label(title_text);
+
+                                                        if let Some(ref desc) = todo.description {
+                                                            if !desc.is_empty() {
+                                                                let desc_color = if todo.completed {
+                                                                    egui::Color32::from_rgb(88, 91, 112)
+                                                                } else {
+                                                                    egui::Color32::from_rgb(166, 173, 200)
+                                                                };
+                                                                ui.label(
+                                                                    egui::RichText::new(desc)
+                                                                        .size(12.0)
+                                                                        .color(desc_color),
+                                                                );
+                                                            }
+                                                        }
+
+                                                        if let Some(status) = todo.due_status() {
+                                                            let (due_txt, due_color) = match status {
+                                                                crate::models::DueStatus::Overdue => (
+                                                                    format!(
+                                                                        "⚠️ Overdue ({})",
+                                                                        todo.due_date
+                                                                            .as_deref()
+                                                                            .unwrap_or("")
+                                                                    ),
+                                                                    egui::Color32::from_rgb(243, 139, 168),
+                                                                ),
+                                                                crate::models::DueStatus::DueToday => (
+                                                                    "⏳ Due Today".to_string(),
+                                                                    egui::Color32::from_rgb(250, 179, 135),
+                                                                ),
+                                                                crate::models::DueStatus::Upcoming => (
+                                                                    format!(
+                                                                        "📅 Due: {}",
+                                                                        todo.due_date
+                                                                            .as_deref()
+                                                                            .unwrap_or("")
+                                                                    ),
+                                                                    egui::Color32::from_rgb(137, 180, 250),
+                                                                ),
+                                                            };
+                                                            ui.label(
+                                                                egui::RichText::new(due_txt)
+                                                                    .size(11.0)
+                                                                    .color(due_color)
+                                                                    .strong(),
+                                                            );
+                                                        }
+
+                                                        if let Some(ref rec) = todo.recurrence {
+                                                            ui.label(
+                                                                egui::RichText::new(format!("🔁 {rec}"))
+                                                                    .size(11.0)
+                                                                    .color(egui::Color32::from_rgb(
+                                                                        203, 166, 247,
+                                                                    ))
+                                                                    .strong(),
+                                                            );
+                                                        }
+                                                    });
+
+                                                    // Action Buttons (Right-aligned)
+                                                    ui.with_layout(
+                                                        egui::Layout::right_to_left(egui::Align::Center),
+                                                        |ui| {
+                                                            if ui.button("🗑️").clicked() {
+                                                                delete_id = Some(todo.id);
+                                                            }
+                                                            if ui.button("✏️").clicked() {
+                                                                edit_id = Some(todo.id);
+                                                            }
+                                                        },
+                                                    );
+                                                });
+                                            });
+                                        ui.add_space(6.0);
+                                    }
+                                });
+                        }
+                    }
 
                     if let Some(id) = toggled_id {
                         self.toggle_todo(id);
@@ -1634,6 +2309,12 @@ impl eframe::App for TodoGuiApp {
                     }
                     if let Some(id) = edit_id {
                         self.start_edit(id);
+                    }
+                    if let Some((id, new_prio)) = priority_change {
+                        self.update_priority(id, new_prio);
+                    }
+                    if let Some(idx) = next_spotlight_idx {
+                        self.calm_spotlight_idx = idx;
                     }
                 }
             });
@@ -2025,5 +2706,127 @@ mod tests {
 
         app.adaptive_mode = AdaptiveMode::DesktopPlanning;
         assert_eq!(app.effective_mode(400.0), AdaptiveMode::DesktopPlanning);
+    }
+
+    #[test]
+    fn test_mobile_focus_hierarchy() {
+        let mut app = TodoGuiApp::new(None);
+        app.todos = vec![
+            TodoItem {
+                id: 1,
+                title: "Low Priority".into(),
+                description: None,
+                completed: false,
+                priority: Priority::Low,
+                due_date: None,
+                recurrence: None,
+                created_at: Utc::now().to_rfc3339(),
+                updated_at: None,
+            },
+            TodoItem {
+                id: 2,
+                title: "High Priority".into(),
+                description: None,
+                completed: false,
+                priority: Priority::High,
+                due_date: None,
+                recurrence: None,
+                created_at: Utc::now().to_rfc3339(),
+                updated_at: None,
+            },
+            TodoItem {
+                id: 3,
+                title: "Completed High".into(),
+                description: None,
+                completed: true,
+                priority: Priority::High,
+                due_date: None,
+                recurrence: None,
+                created_at: Utc::now().to_rfc3339(),
+                updated_at: None,
+            },
+            TodoItem {
+                id: 4,
+                title: "Medium Priority".into(),
+                description: None,
+                completed: false,
+                priority: Priority::Medium,
+                due_date: None,
+                recurrence: None,
+                created_at: Utc::now().to_rfc3339(),
+                updated_at: None,
+            },
+        ];
+
+        let mobile_list = app.mobile_focus_todos();
+        assert_eq!(mobile_list.len(), 4);
+        assert_eq!(mobile_list[0].id, 2); // High priority incomplete first
+        assert_eq!(mobile_list[1].id, 4); // Medium priority incomplete second
+        assert_eq!(mobile_list[2].id, 1); // Low priority incomplete third
+        assert_eq!(mobile_list[3].id, 3); // Completed last
+    }
+
+    #[test]
+    fn test_desktop_planning_priority_update() {
+        let mut app = TodoGuiApp::new(None);
+        app.server_url = "http://localhost:3000".to_string();
+        app.todos = vec![TodoItem {
+            id: 42,
+            title: "Task to bump".into(),
+            description: None,
+            completed: false,
+            priority: Priority::Medium,
+            due_date: None,
+            recurrence: None,
+            created_at: Utc::now().to_rfc3339(),
+            updated_at: None,
+        }];
+
+        app.update_priority(42, Priority::High);
+        assert_eq!(app.todos[0].priority, Priority::High);
+        assert!(app.todos[0].updated_at.is_some());
+        assert_eq!(app.pending_mutations.len(), 1);
+        match &app.pending_mutations[0] {
+            crate::models::PendingMutation::Update { id, update } => {
+                assert_eq!(*id, 42);
+                assert_eq!(update.priority, Some(Priority::High));
+            }
+            _ => panic!("Expected update mutation"),
+        }
+    }
+
+    #[test]
+    fn test_calm_spotlight_indices() {
+        let mut app = TodoGuiApp::new(None);
+        app.todos = vec![
+            TodoItem {
+                id: 1,
+                title: "Calm Task 1".into(),
+                description: None,
+                completed: false,
+                priority: Priority::Medium,
+                due_date: None,
+                recurrence: None,
+                created_at: Utc::now().to_rfc3339(),
+                updated_at: None,
+            },
+            TodoItem {
+                id: 2,
+                title: "Calm Task 2".into(),
+                description: None,
+                completed: false,
+                priority: Priority::Low,
+                due_date: None,
+                recurrence: None,
+                created_at: Utc::now().to_rfc3339(),
+                updated_at: None,
+            },
+        ];
+
+        assert_eq!(app.calm_spotlight_idx, 0);
+        app.calm_spotlight_idx = 5; // Simulating out-of-bounds index
+        let active_count = app.todos.iter().filter(|t| !t.completed).count();
+        let clamped = app.calm_spotlight_idx.min(active_count.saturating_sub(1));
+        assert_eq!(clamped, 1);
     }
 }
