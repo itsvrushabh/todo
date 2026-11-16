@@ -38,8 +38,12 @@ Thank you for your interest in contributing to TaskMaster! We follow an **issue-
    - Keep pull requests focused on a single concern.
 
 5. **Automated Review & CI**:
-   - Automated **Gemini AI Code Review** and **GitHub Copilot** instructions will analyze your PR.
-   - Multi-platform CI (Ubuntu, Windows, macOS) will validate builds and test suites.
+   - Automated **Gemini AI Code Review** runs on every PR.
+   - **GitHub Copilot Code Review**:
+     - Guided by `.github/copilot-instructions.md`.
+     - Automatically requested via `.github/workflows/copilot-pr-review.yml`.
+     - Can also be toggled in repository settings: **Settings** ➔ **Copilot** ➔ **Code review** ➔ *"Automatically request review from Copilot"*.
+   - Multi-platform CI (Ubuntu, Windows, macOS) validates builds, wasm targets, and test suites.
 
 6. **Merge**:
    - Once approved and all checks pass, pull requests are merged via squash to `main`.

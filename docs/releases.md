@@ -48,3 +48,4 @@ flowchart TD
 | **Dependency Update Bot** | `.github/workflows/dependency-update.yml` | Weekly automated `cargo update` with test verification and automated PR creation. |
 | **Dependabot Automerge** | `.github/workflows/dependabot-automerge.yml` | Automatically approves and enables auto-merge for non-breaking Dependabot PRs. |
 | **PR Issue Linker** | `.github/workflows/pr-issue-linker.yml` | Ensures every opened PR explicitly references an open GitHub issue. |
+| **Copilot Review Request** | `.github/workflows/copilot-pr-review.yml` | Automatically requests code review from GitHub Copilot for opened PRs. |
