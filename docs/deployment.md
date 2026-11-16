@@ -1,0 +1,91 @@
+# Deployment Guide
+
+TaskMaster compiles down to a single self-contained binary embedding all frontend assets. You can run it locally, in containers, on Linux VPS instances, or deploy it to cloud platform providers. Configuration templates are available in the [`deploy/`](../deploy/) directory.
+
+---
+
+## 🐳 Docker Deployment
+
+### 1. Docker Compose (Recommended)
+Launch the container with persistent storage volume:
+```bash
+docker compose up -d
+```
+
+View logs:
+```bash
+docker compose logs -f
+```
+
+Stop the container:
+```bash
+docker compose down
+```
+
+### 2. Standalone Docker Container
+```bash
+# Build multi-stage optimized image
+docker build -t taskmaster-todo:latest .
+
+# Run with persistent volume mount
+docker run -d \
+  --name taskmaster-app \
+  -p 8000:8000 \
+  -v $(pwd)/data:/data \
+  -e TODO_STORAGE_PATH=/data/todos.json \
+  --restart unless-stopped \
+  taskmaster-todo:latest
+```
+
+---
+
+## ☁️ Cloud Service Providers
+
+### 1. Fly.io
+Deploy with a persistent volume to keep tasks safe across deployments:
+```bash
+# Launch app using deploy/fly.toml
+fly launch --config deploy/fly.toml --no-deploy
+
+# Create persistent storage volume
+fly volumes create todo_data --size 1 --region iad
+
+# Deploy
+fly deploy --config deploy/fly.toml
+```
+
+### 2. Render
+1. Create a new **Web Service** on [Render](https://render.com).
+2. Connect your GitHub repository.
+3. Select **Docker** environment or use [`deploy/render.yaml`](../deploy/render.yaml).
+4. Attach a persistent disk mounted to `/data` and set `TODO_STORAGE_PATH=/data/todos.json`.
+
+### 3. Railway / Heroku / Generic PaaS
+Deploy using the included [`deploy/Procfile`](../deploy/Procfile):
+```
+web: todo serve --host 0.0.0.0 --port ${PORT:-8000}
+```
+
+---
+
+## 🐧 Linux VPS (Systemd Service)
+
+Deploy directly on Ubuntu, Debian, Arch Linux, or any systemd-based Linux VPS:
+
+```bash
+# 1. Build release binary and install to /usr/local/bin
+cargo build --release
+sudo cp target/release/todo /usr/local/bin/
+
+# 2. Create dedicated data directory
+sudo mkdir -p /var/lib/taskmaster
+sudo chown -R www-data:www-data /var/lib/taskmaster
+
+# 3. Install and start systemd service
+sudo cp deploy/todo.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now todo
+
+# 4. Check service status
+sudo systemctl status todo
+```
