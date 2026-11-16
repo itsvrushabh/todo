@@ -51,6 +51,7 @@ async fn test_crud_endpoints() {
         priority: Some(Priority::High),
         due_date: Some("2026-11-25".to_string()),
         recurrence: None,
+        uuid: None,
     };
 
     let res = client
@@ -181,6 +182,7 @@ async fn test_recurring_task_api() {
         priority: Some(Priority::Medium),
         due_date: Some("2026-01-01".to_string()),
         recurrence: Some(todo::models::RecurrencePattern::Daily),
+        uuid: None,
     };
 
     let res = client

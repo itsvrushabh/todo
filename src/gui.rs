@@ -431,6 +431,7 @@ impl TodoGuiApp {
                         priority: Some(item.priority),
                         due_date: item.due_date.clone(),
                         recurrence: item.recurrence,
+                        uuid: item.uuid.clone(),
                     },
                 ));
         }
@@ -521,6 +522,7 @@ impl TodoGuiApp {
                                     priority: Some(self.edit_priority),
                                     due_date: due,
                                     recurrence: self.edit_recurrence,
+                                    uuid: todo.uuid.clone(),
                                 },
                             });
                     }
@@ -756,6 +758,7 @@ impl TodoGuiApp {
                 let duration = TodoItem::parse_duration_str(clean);
                 let item = TodoItem {
                     id: next_id,
+                    uuid: Some(uuid::Uuid::new_v4().to_string()),
                     title: clean.to_string(),
                     description: None,
                     priority: Priority::Medium,
@@ -775,6 +778,7 @@ impl TodoGuiApp {
                                 priority: Some(item.priority),
                                 due_date: None,
                                 recurrence: None,
+                                uuid: item.uuid.clone(),
                             },
                         ));
                 }
@@ -807,6 +811,7 @@ impl TodoGuiApp {
                             priority: Some(new_priority),
                             due_date: None,
                             recurrence: None,
+                            uuid: todo.uuid.clone(),
                         },
                     });
             }
@@ -2940,6 +2945,7 @@ mod tests {
         app.todos = vec![
             TodoItem {
                 id: 1,
+                uuid: None,
                 title: "Low Priority".into(),
                 description: None,
                 completed: false,
@@ -2952,6 +2958,7 @@ mod tests {
             },
             TodoItem {
                 id: 2,
+                uuid: None,
                 title: "High Priority".into(),
                 description: None,
                 completed: false,
@@ -2964,6 +2971,7 @@ mod tests {
             },
             TodoItem {
                 id: 3,
+                uuid: None,
                 title: "Completed High".into(),
                 description: None,
                 completed: true,
@@ -2976,6 +2984,7 @@ mod tests {
             },
             TodoItem {
                 id: 4,
+                uuid: None,
                 title: "Medium Priority".into(),
                 description: None,
                 completed: false,
@@ -3002,6 +3011,7 @@ mod tests {
         app.server_url = "http://localhost:3000".to_string();
         app.todos = vec![TodoItem {
             id: 42,
+            uuid: None,
             title: "Task to bump".into(),
             description: None,
             completed: false,
@@ -3032,6 +3042,7 @@ mod tests {
         app.todos = vec![
             TodoItem {
                 id: 1,
+                uuid: None,
                 title: "Calm Task 1".into(),
                 description: None,
                 completed: false,
@@ -3044,6 +3055,7 @@ mod tests {
             },
             TodoItem {
                 id: 2,
+                uuid: None,
                 title: "Calm Task 2".into(),
                 description: None,
                 completed: false,
@@ -3093,6 +3105,7 @@ mod tests {
         app.todos = vec![
             TodoItem {
                 id: 1,
+                uuid: None,
                 title: "Quick win".into(),
                 description: None,
                 completed: false,
@@ -3105,6 +3118,7 @@ mod tests {
             },
             TodoItem {
                 id: 2,
+                uuid: None,
                 title: "Deep work task".into(),
                 description: None,
                 completed: false,

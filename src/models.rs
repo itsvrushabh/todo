@@ -109,6 +109,8 @@ impl FromStr for RecurrencePattern {
 pub struct TodoItem {
     #[serde(default)]
     pub id: i64,
+    #[serde(default)]
+    pub uuid: Option<String>,
     pub title: String,
     #[serde(default)]
     pub description: Option<String>,
@@ -162,6 +164,7 @@ impl TodoItem {
         let now = Utc::now().to_rfc3339();
         Self {
             id,
+            uuid: Some(uuid::Uuid::new_v4().to_string()),
             title,
             description,
             priority,
@@ -172,6 +175,11 @@ impl TodoItem {
             recurrence: None,
             estimated_minutes: None,
         }
+    }
+
+    pub fn with_uuid(mut self, uuid: Option<String>) -> Self {
+        self.uuid = uuid;
+        self
     }
 
     pub fn parse_duration_str(s: &str) -> Option<u32> {
@@ -312,6 +320,8 @@ pub struct TodoCreate {
     pub due_date: Option<String>,
     #[serde(default)]
     pub recurrence: Option<RecurrencePattern>,
+    #[serde(default)]
+    pub uuid: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -323,6 +333,8 @@ pub struct TodoUpdate {
     pub due_date: Option<String>,
     #[serde(default)]
     pub recurrence: Option<RecurrencePattern>,
+    #[serde(default)]
+    pub uuid: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -473,6 +485,18 @@ mod tests {
         assert_eq!(item.due_date, None);
         assert_eq!(item.recurrence, None);
         assert_eq!(item.priority, Priority::Medium);
+        assert_eq!(item.uuid, None);
+    }
+
+    #[test]
+    fn test_todo_item_uuid_generation() {
+        let item = TodoItem::new(1, "Task with UUID".into(), None, Priority::High);
+        assert!(item.uuid.is_some());
+        let uuid_str = item.uuid.as_ref().unwrap();
+        assert!(uuid::Uuid::parse_str(uuid_str).is_ok());
+
+        let custom = item.with_uuid(Some("custom-uuid-123".into()));
+        assert_eq!(custom.uuid.as_deref(), Some("custom-uuid-123"));
     }
 
     #[test]
@@ -483,6 +507,7 @@ mod tests {
             priority: Some(Priority::High),
             due_date: Some("2026-11-20".to_string()),
             recurrence: Some(RecurrencePattern::Daily),
+            uuid: Some("client-uuid-456".to_string()),
         });
         let json = serde_json::to_string(&create_mut).unwrap();
         let decoded: PendingMutation = serde_json::from_str(&json).unwrap();
@@ -507,6 +532,7 @@ mod tests {
                 priority: Some(Priority::Low),
                 due_date: None,
                 recurrence: None,
+                uuid: Some("client-uuid-789".to_string()),
             },
         };
         let update_json = serde_json::to_string(&update_mut).unwrap();

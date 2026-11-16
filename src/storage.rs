@@ -180,6 +180,16 @@ impl JsonTodoStorage {
         Ok(data.todos.into_iter().find(|t| t.id == id))
     }
 
+    pub fn get_by_uuid(&self, uuid: &str) -> Result<Option<TodoItem>, StorageError> {
+        let _guard = self.read_lock();
+        let data = self.load_raw_locked()?;
+        let trimmed = uuid.trim();
+        Ok(data
+            .todos
+            .into_iter()
+            .find(|t| t.uuid.as_deref() == Some(trimmed)))
+    }
+
     pub fn create(&self, todo_in: TodoCreate) -> Result<TodoItem, StorageError> {
         let trimmed_title = todo_in.title.trim().to_string();
         if trimmed_title.is_empty() {
@@ -197,6 +207,12 @@ impl JsonTodoStorage {
             todo_in.description.map(|d| d.trim().to_string()),
             todo_in.priority.unwrap_or_default(),
         );
+        if let Some(uuid_str) = todo_in.uuid {
+            let trimmed_uuid = uuid_str.trim().to_string();
+            if !trimmed_uuid.is_empty() {
+                item.uuid = Some(trimmed_uuid);
+            }
+        }
         if let Some(due) = todo_in.due_date {
             let trimmed = due.trim().to_string();
             if !trimmed.is_empty() {
@@ -242,6 +258,12 @@ impl JsonTodoStorage {
                 } else {
                     Some(trimmed)
                 };
+            }
+            if let Some(uuid_str) = todo_in.uuid {
+                let trimmed = uuid_str.trim().to_string();
+                if !trimmed.is_empty() {
+                    item.uuid = Some(trimmed);
+                }
             }
             if let Some(completed) = todo_in.completed {
                 if completed && !item.completed && item.recurrence.is_some() {

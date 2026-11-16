@@ -177,6 +177,7 @@ impl TuiApp {
                 priority: Some(self.new_priority),
                 due_date: None,
                 recurrence: None,
+                uuid: None,
             });
             self.new_title.clear();
             self.new_desc.clear();
