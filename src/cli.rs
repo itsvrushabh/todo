@@ -92,6 +92,17 @@ pub enum Commands {
     Clear,
     /// Display summary statistics
     Stats,
+    /// Generate shell completion scripts to stdout
+    Completions {
+        #[arg(value_enum, help = "Target shell")]
+        shell: clap_complete::Shell,
+    },
+}
+
+pub fn generate_completions(shell: clap_complete::Shell) {
+    use clap::CommandFactory;
+    let mut cmd = Cli::command();
+    clap_complete::generate(shell, &mut cmd, "todo", &mut std::io::stdout());
 }
 
 pub fn list_todos(

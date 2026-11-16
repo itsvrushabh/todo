@@ -96,6 +96,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Stats) => {
             cli::show_stats(storage)?;
         }
+        Some(Commands::Completions { shell }) => {
+            cli::generate_completions(shell);
+        }
         None => {
             // Default action: start the server on 0.0.0.0:8000
             run_server("0.0.0.0", 8000, storage, &storage_path).await?;
