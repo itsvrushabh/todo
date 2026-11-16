@@ -51,6 +51,8 @@ pub struct TodoGuiApp {
     pub pending_mutations: Vec<crate::models::PendingMutation>,
     pub is_draining_queue: bool,
     pub last_sync_timestamp: Option<String>,
+    pub undo_stack: Vec<Vec<TodoItem>>,
+    pub redo_stack: Vec<Vec<TodoItem>>,
 }
 
 impl TodoGuiApp {
@@ -93,6 +95,8 @@ impl TodoGuiApp {
             pending_mutations: Vec::new(),
             is_draining_queue: false,
             last_sync_timestamp: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         };
         app.load_todos();
         app
@@ -260,12 +264,45 @@ impl TodoGuiApp {
         }
     }
 
+    pub fn record_undo_snapshot(&mut self) {
+        if self.undo_stack.len() >= 50 {
+            self.undo_stack.remove(0);
+        }
+        self.undo_stack.push(self.todos.clone());
+        self.redo_stack.clear();
+    }
+
+    pub fn undo(&mut self) {
+        if let Some(prev) = self.undo_stack.pop() {
+            self.redo_stack.push(self.todos.clone());
+            self.todos = prev;
+            self.save_todos();
+        }
+    }
+
+    pub fn redo(&mut self) {
+        if let Some(next) = self.redo_stack.pop() {
+            self.undo_stack.push(self.todos.clone());
+            self.todos = next;
+            self.save_todos();
+        }
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo_stack.is_empty()
+    }
+
     pub fn add_todo(&mut self) {
-        let trimmed = self.new_title.trim();
+        let trimmed = self.new_title.trim().to_string();
         if trimmed.is_empty() {
             return;
         }
 
+        self.record_undo_snapshot();
         let new_id = self.todos.iter().map(|t| t.id).max().unwrap_or(0) + 1;
         let desc = if self.new_description.trim().is_empty() {
             None
@@ -273,7 +310,7 @@ impl TodoGuiApp {
             Some(self.new_description.trim().to_string())
         };
 
-        let mut item = TodoItem::new(new_id, trimmed.to_string(), desc, self.new_priority);
+        let mut item = TodoItem::new(new_id, trimmed, desc, self.new_priority);
         let due_trimmed = self.new_due_date.trim();
         if !due_trimmed.is_empty() {
             item.due_date = Some(due_trimmed.to_string());
@@ -308,6 +345,7 @@ impl TodoGuiApp {
     }
 
     pub fn toggle_todo(&mut self, id: i64) {
+        self.record_undo_snapshot();
         if let Some(todo) = self.todos.iter_mut().find(|t| t.id == id) {
             if !todo.completed && todo.recurrence.is_some() {
                 if let Some(next_due) = todo.next_recurrence_date() {
@@ -331,6 +369,7 @@ impl TodoGuiApp {
     }
 
     pub fn delete_todo(&mut self, id: i64) {
+        self.record_undo_snapshot();
         self.todos.retain(|t| t.id != id);
         if !self.server_url.trim().is_empty() {
             self.pending_mutations
@@ -352,8 +391,9 @@ impl TodoGuiApp {
 
     pub fn save_edit(&mut self) {
         if let Some(id) = self.editing_id {
-            let trimmed = self.edit_title.trim();
+            let trimmed = self.edit_title.trim().to_string();
             if !trimmed.is_empty() {
+                self.record_undo_snapshot();
                 let desc = if self.edit_description.trim().is_empty() {
                     None
                 } else {
@@ -366,13 +406,13 @@ impl TodoGuiApp {
                 };
 
                 if let Some(todo) = self.todos.iter_mut().find(|t| t.id == id) {
-                    todo.title = trimmed.to_string();
+                    todo.title = trimmed.clone();
                     todo.description = desc.clone();
                     todo.priority = self.edit_priority;
                     todo.due_date = due.clone();
                     todo.recurrence = self.edit_recurrence;
                     todo.updated_at = Some(Utc::now().to_rfc3339());
-                    for t in TodoItem::extract_tags(trimmed) {
+                    for t in TodoItem::extract_tags(&trimmed) {
                         if !todo.tags.contains(&t) {
                             todo.tags.push(t);
                         }
@@ -383,7 +423,7 @@ impl TodoGuiApp {
                             .push(crate::models::PendingMutation::Update {
                                 id,
                                 update: crate::models::TodoUpdate {
-                                    title: Some(trimmed.to_string()),
+                                    title: Some(trimmed),
                                     description: desc,
                                     completed: None,
                                     priority: Some(self.edit_priority),
@@ -406,6 +446,7 @@ impl TodoGuiApp {
     }
 
     pub fn clear_completed(&mut self) {
+        self.record_undo_snapshot();
         self.todos.retain(|t| !t.completed);
         self.save_todos();
     }
@@ -441,6 +482,9 @@ impl TodoGuiApp {
         let items: Vec<TodoItem> =
             serde_json::from_str(json_str).map_err(|e| format!("Invalid JSON format: {e}"))?;
         let count = items.len();
+        if count > 0 {
+            self.record_undo_snapshot();
+        }
         for item in items {
             let new_id = self.todos.iter().map(|t| t.id).max().unwrap_or(0) + 1;
             let mut new_item = item;
@@ -682,6 +726,7 @@ impl TodoGuiApp {
     }
 
     pub fn toggle_subtask(&mut self, todo_id: i64, subtask_id: &str) {
+        self.record_undo_snapshot();
         if let Some(todo) = self.todos.iter_mut().find(|t| t.id == todo_id) {
             if let Some(sub) = todo.subtasks.iter_mut().find(|s| s.id == subtask_id) {
                 sub.completed = !sub.completed;
@@ -794,6 +839,7 @@ impl TodoGuiApp {
         }
 
         if added_count > 0 {
+            self.record_undo_snapshot();
             self.todos.extend(new_items);
             self.planning_scratchpad.clear();
             self.save_todos();
@@ -802,6 +848,7 @@ impl TodoGuiApp {
     }
 
     pub fn update_priority(&mut self, id: i64, new_priority: Priority) {
+        self.record_undo_snapshot();
         if let Some(todo) = self.todos.iter_mut().find(|t| t.id == id) {
             todo.priority = new_priority;
             todo.updated_at = Some(Utc::now().to_rfc3339());
@@ -925,6 +972,19 @@ impl eframe::App for TodoGuiApp {
             self.fetch_from_server(ctx.clone());
         }
 
+        // Global Undo/Redo Shortcuts: Ctrl+Z / Cmd+Z and Ctrl+Y / Cmd+Shift+Z
+        let (trigger_undo, trigger_redo) = ctx.input(|i| {
+            let undo = i.modifiers.command && i.key_pressed(egui::Key::Z) && !i.modifiers.shift;
+            let redo = (i.modifiers.command && i.key_pressed(egui::Key::Y))
+                || (i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Z));
+            (undo, redo)
+        });
+        if trigger_undo {
+            self.undo();
+        } else if trigger_redo {
+            self.redo();
+        }
+
         // Automatic retry/drain if queue is non-empty and not currently draining
         if !self.pending_mutations.is_empty()
             && !self.is_draining_queue
@@ -991,6 +1051,24 @@ impl eframe::App for TodoGuiApp {
                             .clicked()
                         {
                             self.show_add_dialog = !self.show_add_dialog;
+                        }
+
+                        let can_redo = self.can_redo();
+                        if ui
+                            .add_enabled(can_redo, egui::Button::new("⟳ Redo"))
+                            .on_hover_text("Redo last undone action (Ctrl+Y / Cmd+Shift+Z)")
+                            .clicked()
+                        {
+                            self.redo();
+                        }
+
+                        let can_undo = self.can_undo();
+                        if ui
+                            .add_enabled(can_undo, egui::Button::new("⟲ Undo"))
+                            .on_hover_text("Undo last action (Ctrl+Z / Cmd+Z)")
+                            .clicked()
+                        {
+                            self.undo();
                         }
 
                         // In Calm Mode, hide Clear Done, Export, Import, Settings, and Sync Status
@@ -1944,5 +2022,74 @@ mod tests {
             .todos
             .iter()
             .any(|t| t.uuid.as_deref() == Some("uuid-new-remote")));
+    }
+
+    #[test]
+    fn test_gui_undo_redo_lifecycle() {
+        let mut app = TodoGuiApp::new(None);
+        app.todos.clear();
+        app.undo_stack.clear();
+        app.redo_stack.clear();
+
+        assert!(!app.can_undo());
+        assert!(!app.can_redo());
+
+        // 1. Add task
+        app.new_title = "Undoable Task".to_string();
+        app.add_todo();
+        assert_eq!(app.todos.len(), 1);
+        assert!(app.can_undo());
+        assert!(!app.can_redo());
+
+        // 2. Undo addition
+        app.undo();
+        assert_eq!(app.todos.len(), 0);
+        assert!(!app.can_undo());
+        assert!(app.can_redo());
+
+        // 3. Redo addition
+        app.redo();
+        assert_eq!(app.todos.len(), 1);
+        assert_eq!(app.todos[0].title, "Undoable Task");
+        assert!(app.can_undo());
+        assert!(!app.can_redo());
+
+        // 4. Toggle task and undo
+        let task_id = app.todos[0].id;
+        assert!(!app.todos[0].completed);
+        app.toggle_todo(task_id);
+        assert!(app.todos[0].completed);
+        app.undo();
+        assert!(!app.todos[0].completed);
+
+        // 5. Delete task and undo
+        app.delete_todo(task_id);
+        assert_eq!(app.todos.len(), 0);
+        app.undo();
+        assert_eq!(app.todos.len(), 1);
+        assert_eq!(app.todos[0].id, task_id);
+    }
+
+    #[test]
+    fn test_gui_undo_redo_capacity_limit() {
+        let mut app = TodoGuiApp::new(None);
+        app.todos.clear();
+        app.undo_stack.clear();
+
+        for i in 0..60 {
+            app.new_title = format!("Task {i}");
+            app.add_todo();
+        }
+
+        // Maximum snapshots capped at 50
+        assert_eq!(app.undo_stack.len(), 50);
+        assert_eq!(app.todos.len(), 60);
+
+        // Can undo 50 times
+        for _ in 0..50 {
+            app.undo();
+        }
+        assert!(!app.can_undo());
+        assert_eq!(app.redo_stack.len(), 50);
     }
 }
