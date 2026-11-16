@@ -1,5 +1,5 @@
 use crate::models::{Priority, TodoCreate, TodoItem, TodoStats};
-use crate::storage::JsonTodoStorage;
+use crate::storage::TodoStorage;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
@@ -35,7 +35,7 @@ enum InputMode {
 }
 
 pub struct TuiApp {
-    storage: Arc<JsonTodoStorage>,
+    storage: Arc<dyn TodoStorage>,
     todos: Vec<TodoItem>,
     stats: TodoStats,
     list_state: ListState,
@@ -50,7 +50,7 @@ pub struct TuiApp {
 }
 
 impl TuiApp {
-    pub fn new(storage: Arc<JsonTodoStorage>) -> Self {
+    pub fn new(storage: Arc<dyn TodoStorage>) -> Self {
         let mut app = Self {
             storage,
             todos: Vec::new(),
@@ -200,7 +200,7 @@ impl TuiApp {
     }
 }
 
-pub fn run_tui(storage: Arc<JsonTodoStorage>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run_tui(storage: Arc<dyn TodoStorage>) -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;

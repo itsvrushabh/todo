@@ -24,7 +24,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .or_else(|| env::var("TODO_STORAGE_PATH").ok())
         .unwrap_or_else(|| "todos.json".to_string());
 
-    let storage = Arc::new(JsonTodoStorage::new(&storage_path)?);
+    let storage: Arc<dyn todo::storage::TodoStorage> = {
+        #[cfg(feature = "sqlite")]
+        if storage_path.ends_with(".db") || storage_path.ends_with(".sqlite") {
+            Arc::new(todo::storage::SqliteTodoStorage::new(&storage_path)?)
+        } else {
+            Arc::new(JsonTodoStorage::new(&storage_path)?)
+        }
+        #[cfg(not(feature = "sqlite"))]
+        Arc::new(JsonTodoStorage::new(&storage_path)?)
+    };
 
     match cli.command {
         Some(Commands::Serve { host, port }) => {

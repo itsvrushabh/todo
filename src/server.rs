@@ -1,7 +1,7 @@
 use crate::models::{
     SyncApplyResult, SyncQuery, SyncResponse, TodoCreate, TodoItem, TodoStats, TodoUpdate,
 };
-use crate::storage::JsonTodoStorage;
+use crate::storage::TodoStorage;
 use axum::{
     extract::{Path, Query, State},
     http::{header, HeaderValue, StatusCode},
@@ -33,10 +33,10 @@ pub struct TodoQueryParams {
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
-    pub storage: Arc<JsonTodoStorage>,
+    pub storage: Arc<dyn TodoStorage>,
 }
 
-pub fn create_router(storage: Arc<JsonTodoStorage>) -> Router {
+pub fn create_router(storage: Arc<dyn TodoStorage>) -> Router {
     Router::new()
         // API routes
         .route("/api/health", get(health_check))
@@ -70,7 +70,7 @@ async fn health_check() -> Json<serde_json::Value> {
 }
 
 async fn get_todos(
-    State(storage): State<Arc<JsonTodoStorage>>,
+    State(storage): State<Arc<dyn TodoStorage>>,
     Query(params): Query<TodoQueryParams>,
 ) -> Result<Json<Vec<TodoItem>>, (StatusCode, Json<serde_json::Value>)> {
     let items = storage
@@ -90,7 +90,7 @@ async fn get_todos(
 }
 
 async fn create_todo(
-    State(storage): State<Arc<JsonTodoStorage>>,
+    State(storage): State<Arc<dyn TodoStorage>>,
     Json(payload): Json<TodoCreate>,
 ) -> Result<(StatusCode, Json<TodoItem>), (StatusCode, Json<serde_json::Value>)> {
     if payload.title.trim().is_empty() {
@@ -111,7 +111,7 @@ async fn create_todo(
 }
 
 async fn get_todo(
-    State(storage): State<Arc<JsonTodoStorage>>,
+    State(storage): State<Arc<dyn TodoStorage>>,
     Path(id): Path<i64>,
 ) -> Result<Json<TodoItem>, (StatusCode, Json<serde_json::Value>)> {
     match storage.get_by_id(id) {
@@ -128,7 +128,7 @@ async fn get_todo(
 }
 
 async fn update_todo(
-    State(storage): State<Arc<JsonTodoStorage>>,
+    State(storage): State<Arc<dyn TodoStorage>>,
     Path(id): Path<i64>,
     Json(payload): Json<TodoUpdate>,
 ) -> Result<Json<TodoItem>, (StatusCode, Json<serde_json::Value>)> {
@@ -146,7 +146,7 @@ async fn update_todo(
 }
 
 async fn toggle_todo(
-    State(storage): State<Arc<JsonTodoStorage>>,
+    State(storage): State<Arc<dyn TodoStorage>>,
     Path(id): Path<i64>,
 ) -> Result<Json<TodoItem>, (StatusCode, Json<serde_json::Value>)> {
     match storage.toggle(id) {
@@ -163,7 +163,7 @@ async fn toggle_todo(
 }
 
 async fn toggle_subtask(
-    State(storage): State<Arc<JsonTodoStorage>>,
+    State(storage): State<Arc<dyn TodoStorage>>,
     Path((id, subtask_id)): Path<(i64, String)>,
 ) -> Result<Json<TodoItem>, (StatusCode, Json<serde_json::Value>)> {
     match storage.toggle_subtask(id, &subtask_id) {
@@ -180,7 +180,7 @@ async fn toggle_subtask(
 }
 
 async fn delete_todo(
-    State(storage): State<Arc<JsonTodoStorage>>,
+    State(storage): State<Arc<dyn TodoStorage>>,
     Path(id): Path<i64>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     match storage.delete(id) {
@@ -199,7 +199,7 @@ async fn delete_todo(
 }
 
 async fn clear_completed(
-    State(storage): State<Arc<JsonTodoStorage>>,
+    State(storage): State<Arc<dyn TodoStorage>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let count = storage.clear_completed().map_err(|e| {
         (
@@ -211,7 +211,7 @@ async fn clear_completed(
 }
 
 async fn get_stats(
-    State(storage): State<Arc<JsonTodoStorage>>,
+    State(storage): State<Arc<dyn TodoStorage>>,
 ) -> Result<Json<TodoStats>, (StatusCode, Json<serde_json::Value>)> {
     let stats = storage.get_stats().map_err(|e| {
         (
@@ -223,7 +223,7 @@ async fn get_stats(
 }
 
 async fn sync_pull(
-    State(storage): State<Arc<JsonTodoStorage>>,
+    State(storage): State<Arc<dyn TodoStorage>>,
     Query(query): Query<SyncQuery>,
 ) -> Result<Json<SyncResponse>, (StatusCode, Json<serde_json::Value>)> {
     match storage.get_sync(query.since.as_deref()) {
@@ -236,7 +236,7 @@ async fn sync_pull(
 }
 
 async fn sync_push(
-    State(storage): State<Arc<JsonTodoStorage>>,
+    State(storage): State<Arc<dyn TodoStorage>>,
     Json(payload): Json<SyncResponse>,
 ) -> Result<Json<SyncApplyResult>, (StatusCode, Json<serde_json::Value>)> {
     match storage.apply_sync(payload) {
@@ -343,7 +343,7 @@ pub fn render_qr_ascii(url: &str) -> Option<String> {
 pub async fn run_server(
     host: &str,
     port: u16,
-    storage: Arc<JsonTodoStorage>,
+    storage: Arc<dyn TodoStorage>,
     storage_path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let app = create_router(storage);

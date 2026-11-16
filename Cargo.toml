@@ -8,6 +8,10 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/itsvrushabh/todo"
 
+[features]
+default = []
+sqlite = ["dep:rusqlite"]
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -29,6 +33,7 @@ local-ip-address = "0.6"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+rusqlite = { version = "0.32", features = ["bundled"], optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "web_screen_reader"] }
