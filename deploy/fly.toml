@@ -1,5 +1,5 @@
-# Fly.io deployment configuration for TaskMaster Todo
-app = "taskmaster-todo"
+# Fly.io deployment configuration for Todo
+app = "todo-app"
 primary_region = "iad"
 
 [build]

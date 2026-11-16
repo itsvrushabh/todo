@@ -394,7 +394,7 @@ fn ui(f: &mut Frame, app: &TuiApp) {
 
     let title_line = Line::from(vec![
         Span::styled(
-            " ⚡ TaskMaster TUI ",
+            " ⚡ Todo TUI ",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),

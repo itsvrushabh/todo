@@ -1,6 +1,6 @@
 # Release Cadence & Automation Architecture
 
-TaskMaster follows an automated release schedule and strict issue-first trunk-based development workflow.
+Todo follows an automated release schedule and strict issue-first trunk-based development workflow.
 
 ---
 

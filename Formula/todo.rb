@@ -6,20 +6,20 @@ class Todo < Formula
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/itsvrushabh/todo/releases/download/v#{version}/taskmaster-macos-arm64.tar.gz"
+      url "https://github.com/itsvrushabh/todo/releases/download/v#{version}/todo-macos-arm64.tar.gz"
       sha256 "0000000000000000000000000000000000000000000000000000000000000000"
     else
-      url "https://github.com/itsvrushabh/todo/releases/download/v#{version}/taskmaster-macos-x86_64.tar.gz"
+      url "https://github.com/itsvrushabh/todo/releases/download/v#{version}/todo-macos-x86_64.tar.gz"
       sha256 "0000000000000000000000000000000000000000000000000000000000000000"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/itsvrushabh/todo/releases/download/v#{version}/taskmaster-linux-arm64.tar.gz"
+      url "https://github.com/itsvrushabh/todo/releases/download/v#{version}/todo-linux-arm64.tar.gz"
       sha256 "0000000000000000000000000000000000000000000000000000000000000000"
     else
-      url "https://github.com/itsvrushabh/todo/releases/download/v#{version}/taskmaster-linux-amd64.tar.gz"
+      url "https://github.com/itsvrushabh/todo/releases/download/v#{version}/todo-linux-amd64.tar.gz"
       sha256 "0000000000000000000000000000000000000000000000000000000000000000"
     end
   end

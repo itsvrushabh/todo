@@ -1,4 +1,4 @@
-# TaskMaster
+# Todo
 
 [![CI](https://github.com/itsvrushabh/todo/actions/workflows/ci.yml/badge.svg)](https://github.com/itsvrushabh/todo/actions/workflows/ci.yml)
 [![Pages](https://github.com/itsvrushabh/todo/actions/workflows/deploy-pages.yml/badge.svg)](https://itsvrushabh.github.io/todo/)
@@ -7,7 +7,7 @@
 
 > A high-performance, memory-safe, cross-platform Todo and Task Management application written in **Rust 2021**.
 
-TaskMaster runs seamlessly as an **interactive terminal UI (TUI)**, a **native desktop GUI window**, a **CLI tool**, a **standalone web server**, and a **100% pure Rust WebAssembly app (zero HTML/CSS/JavaScript)**.
+Todo runs seamlessly as an **interactive terminal UI (TUI)**, a **native desktop GUI window**, a **CLI tool**, a **standalone web server**, and a **WebAssembly web app**.
 
 🌐 **Live Web Demo**: [https://itsvrushabh.github.io/todo/](https://itsvrushabh.github.io/todo/)  
 📖 **Rustdoc API Docs**: [https://itsvrushabh.github.io/todo/docs/todo/](https://itsvrushabh.github.io/todo/docs/todo/)
@@ -16,7 +16,7 @@ TaskMaster runs seamlessly as an **interactive terminal UI (TUI)**, a **native d
 
 ## ✨ Features
 
-- 🦀 **100% Pure Rust Stack**: Frontend and backend written entirely in Rust. All legacy JavaScript and CSS have been replaced by an immediate-mode WebGL/Canvas UI powered by `egui` and `eframe`.
+- 🦀 **Rust Stack**: Frontend and backend written in Rust with an immediate-mode UI powered by `egui` and `eframe`.
 - 🖥️ **Native Desktop Window**: Launch a standalone GPU-accelerated desktop GUI on Linux, Windows, or macOS with `cargo run -- gui`.
 - 📺 **Interactive TUI**: Rich terminal dashboard with live progress gauges, priority badges, detail pane, instant search (`/`), and filter tabs.
 - 💻 **Scriptable CLI**: Direct terminal subcommands (`add`, `list`, `done`, `rm`, `clear`, `stats`) for shell scripts and shortcuts.
@@ -88,7 +88,7 @@ For detailed guides, please refer to the specialized documentation:
 
 ## 🤝 Contributing
 
-Contributions are welcome! TaskMaster enforces an issue-first workflow where all pull requests link to an issue and pass automated CI and Gemini AI code reviews. Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** before opening a PR.
+Contributions are welcome! Todo enforces an issue-first workflow where all pull requests link to an issue and pass automated CI and Gemini AI code reviews. Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** before opening a PR.
 
 ---
 

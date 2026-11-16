@@ -7,10 +7,10 @@ ASSETS_DIR="${2:-release_assets}"
 
 echo "==> Updating package manifests for version v${VERSION} from ${ASSETS_DIR}..."
 
-AMD64_LINUX="${ASSETS_DIR}/taskmaster-linux-amd64.tar.gz"
-ARM64_LINUX="${ASSETS_DIR}/taskmaster-linux-arm64.tar.gz"
-ARM64_MACOS="${ASSETS_DIR}/taskmaster-macos-arm64.tar.gz"
-X86_64_MACOS="${ASSETS_DIR}/taskmaster-macos-x86_64.tar.gz"
+AMD64_LINUX="${ASSETS_DIR}/todo-linux-amd64.tar.gz"
+ARM64_LINUX="${ASSETS_DIR}/todo-linux-arm64.tar.gz"
+ARM64_MACOS="${ASSETS_DIR}/todo-macos-arm64.tar.gz"
+X86_64_MACOS="${ASSETS_DIR}/todo-macos-x86_64.tar.gz"
 
 get_hash() {
     local file="$1"

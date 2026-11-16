@@ -1,4 +1,4 @@
-# Maintainer: TaskMaster Contributors <https://github.com/itsvrushabh/todo>
+# Maintainer: Todo Contributors <https://github.com/itsvrushabh/todo>
 pkgname=todo-bin
 _pkgname=todo
 pkgver=0.1.0
@@ -18,8 +18,8 @@ optdepends=(
 )
 provides=('todo')
 conflicts=('todo')
-source_x86_64=("${pkgname}-${pkgver}-x86_64.tar.gz::https://github.com/itsvrushabh/todo/releases/download/v${pkgver}/taskmaster-linux-amd64.tar.gz")
-source_aarch64=("${pkgname}-${pkgver}-aarch64.tar.gz::https://github.com/itsvrushabh/todo/releases/download/v${pkgver}/taskmaster-linux-arm64.tar.gz")
+source_x86_64=("${pkgname}-${pkgver}-x86_64.tar.gz::https://github.com/itsvrushabh/todo/releases/download/v${pkgver}/todo-linux-amd64.tar.gz")
+source_aarch64=("${pkgname}-${pkgver}-aarch64.tar.gz::https://github.com/itsvrushabh/todo/releases/download/v${pkgver}/todo-linux-arm64.tar.gz")
 sha256sums_x86_64=('SKIP')
 sha256sums_aarch64=('SKIP')
 

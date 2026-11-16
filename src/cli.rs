@@ -7,7 +7,7 @@ use std::sync::Arc;
 #[derive(Parser, Debug)]
 #[command(
     name = "todo",
-    about = "TaskMaster - Cross-Platform Modern Todo App with Web UI, PWA, TUI, and CLI",
+    about = "Todo - Cross-Platform Modern Todo App with Web UI, PWA, TUI, and CLI",
     version
 )]
 pub struct Cli {
@@ -91,7 +91,7 @@ pub fn list_todos(
     let stats = storage.get_stats()?;
 
     println!("\n{}", "=".repeat(60));
-    println!(" 📋 TaskMaster - Task List");
+    println!(" 📋 Todo - Task List");
     println!("{}", "=".repeat(60));
 
     if items.is_empty() {
@@ -219,7 +219,7 @@ pub fn clear_completed(storage: Arc<JsonTodoStorage>) -> Result<(), Box<dyn std:
 
 pub fn show_stats(storage: Arc<JsonTodoStorage>) -> Result<TodoStats, Box<dyn std::error::Error>> {
     let stats = storage.get_stats()?;
-    println!("\n📊 TaskMaster Statistics:");
+    println!("\n📊 Todo Statistics:");
     println!("   Total tasks:          {}", stats.total);
     println!("   Active tasks:         {}", stats.active);
     println!("   Completed tasks:      {}", stats.completed);

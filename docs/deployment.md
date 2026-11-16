@@ -1,6 +1,6 @@
 # Deployment Guide
 
-TaskMaster compiles down to a single self-contained binary embedding all frontend assets. You can run it locally, in containers, on Linux VPS instances, or deploy it to cloud platform providers. Configuration templates are available in the [`deploy/`](../deploy/) directory.
+Todo compiles down to a single self-contained binary embedding all frontend assets. You can run it locally, in containers, on Linux VPS instances, or deploy it to cloud platform providers. Configuration templates are available in the [`deploy/`](../deploy/) directory.
 
 ---
 
@@ -10,11 +10,11 @@ Pre-compiled standalone binaries are built and attached to every [GitHub Release
 
 | Platform | Architecture | Release Archive |
 |---|---|---|
-| **Linux** | `x86_64` (AMD64) | `taskmaster-linux-amd64.tar.gz` |
-| **Linux** | `aarch64` (ARM64) | `taskmaster-linux-arm64.tar.gz` |
-| **macOS** | Apple Silicon (`aarch64`) | `taskmaster-macos-arm64.tar.gz` |
-| **macOS** | Intel (`x86_64`) | `taskmaster-macos-x86_64.tar.gz` |
-| **Windows** | `x86_64` (AMD64) | `taskmaster-windows-amd64.zip` |
+| **Linux** | `x86_64` (AMD64) | `todo-linux-amd64.tar.gz` |
+| **Linux** | `aarch64` (ARM64) | `todo-linux-arm64.tar.gz` |
+| **macOS** | Apple Silicon (`aarch64`) | `todo-macos-arm64.tar.gz` |
+| **macOS** | Intel (`x86_64`) | `todo-macos-x86_64.tar.gz` |
+| **Windows** | `x86_64` (AMD64) | `todo-windows-amd64.zip` |
 
 Extract the archive and move `todo` (or `todo.exe`) to your `$PATH` (e.g. `/usr/local/bin` on Linux/macOS).
 
@@ -74,16 +74,16 @@ docker compose down
 ### 2. Standalone Docker Container
 ```bash
 # Build multi-stage optimized image
-docker build -t taskmaster-todo:latest .
+docker build -t todo-app:latest .
 
 # Run with persistent volume mount
 docker run -d \
-  --name taskmaster-app \
+  --name todo-app \
   -p 8000:8000 \
   -v $(pwd)/data:/data \
   -e TODO_STORAGE_PATH=/data/todos.json \
   --restart unless-stopped \
-  taskmaster-todo:latest
+  todo-app:latest
 ```
 
 ---
@@ -127,8 +127,8 @@ cargo build --release
 sudo cp target/release/todo /usr/local/bin/
 
 # 2. Create dedicated data directory
-sudo mkdir -p /var/lib/taskmaster
-sudo chown -R www-data:www-data /var/lib/taskmaster
+sudo mkdir -p /var/lib/todo
+sudo chown -R www-data:www-data /var/lib/todo
 
 # 3. Install and start systemd service
 sudo cp deploy/todo.service /etc/systemd/system/

@@ -1,6 +1,6 @@
 # REST API Reference
 
-TaskMaster provides a clean RESTful HTTP API built with Axum. All JSON responses use standard status codes and structured payloads.
+Todo provides a clean RESTful HTTP API built with Axum. All JSON responses use standard status codes and structured payloads.
 
 Interactive rustdoc API documentation is also published at:
 [https://itsvrushabh.github.io/todo/docs/todo/](https://itsvrushabh.github.io/todo/docs/todo/)

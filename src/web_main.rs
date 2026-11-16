@@ -37,7 +37,5 @@ fn main() {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
-    println!(
-        "TaskMaster Web target is intended to be built with Trunk for wasm32-unknown-unknown."
-    );
+    println!("Todo Web target is intended to be built with Trunk for wasm32-unknown-unknown.");
 }
