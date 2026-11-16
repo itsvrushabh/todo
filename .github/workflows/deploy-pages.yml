@@ -51,7 +51,6 @@ jobs:
           # Ensure icons and PWA manifests are in dist
           cp -r static/icons dist/ || true
           cp static/manifest.json dist/ || true
-          cp static/sw.js dist/ || true
           # Copy Rust documentation
           mkdir -p dist/docs
           cp -r target/doc/* dist/docs/
