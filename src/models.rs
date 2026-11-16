@@ -221,7 +221,7 @@ impl TodoItem {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct TodoCreate {
     pub title: String,
     #[serde(default)]
@@ -234,7 +234,7 @@ pub struct TodoCreate {
     pub recurrence: Option<RecurrencePattern>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct TodoUpdate {
     pub title: Option<String>,
     pub description: Option<String>,
@@ -243,6 +243,15 @@ pub struct TodoUpdate {
     pub due_date: Option<String>,
     #[serde(default)]
     pub recurrence: Option<RecurrencePattern>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum PendingMutation {
+    Create(TodoCreate),
+    Update { id: i64, update: TodoUpdate },
+    Delete { id: i64 },
+    Toggle { id: i64 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -345,5 +354,44 @@ mod tests {
         assert_eq!(item.due_date, None);
         assert_eq!(item.recurrence, None);
         assert_eq!(item.priority, Priority::Medium);
+    }
+
+    #[test]
+    fn test_pending_mutation_serialization() {
+        let create_mut = PendingMutation::Create(TodoCreate {
+            title: "Offline task".to_string(),
+            description: Some("Offline desc".to_string()),
+            priority: Some(Priority::High),
+            due_date: Some("2026-11-20".to_string()),
+            recurrence: Some(RecurrencePattern::Daily),
+        });
+        let json = serde_json::to_string(&create_mut).unwrap();
+        let decoded: PendingMutation = serde_json::from_str(&json).unwrap();
+        assert_eq!(create_mut, decoded);
+
+        let toggle_mut = PendingMutation::Toggle { id: 42 };
+        let toggle_json = serde_json::to_string(&toggle_mut).unwrap();
+        let toggle_decoded: PendingMutation = serde_json::from_str(&toggle_json).unwrap();
+        assert_eq!(toggle_mut, toggle_decoded);
+
+        let del_mut = PendingMutation::Delete { id: 7 };
+        let del_json = serde_json::to_string(&del_mut).unwrap();
+        let del_decoded: PendingMutation = serde_json::from_str(&del_json).unwrap();
+        assert_eq!(del_mut, del_decoded);
+
+        let update_mut = PendingMutation::Update {
+            id: 10,
+            update: TodoUpdate {
+                title: Some("Updated title".to_string()),
+                description: None,
+                completed: Some(true),
+                priority: Some(Priority::Low),
+                due_date: None,
+                recurrence: None,
+            },
+        };
+        let update_json = serde_json::to_string(&update_mut).unwrap();
+        let update_decoded: PendingMutation = serde_json::from_str(&update_json).unwrap();
+        assert_eq!(update_mut, update_decoded);
     }
 }
