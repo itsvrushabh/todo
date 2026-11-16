@@ -1,15 +1,14 @@
 const CACHE_NAME = 'taskmaster-v1';
 const STATIC_ASSETS = [
-  '/',
-  '/manifest.json',
-  '/static/style.css',
-  '/static/app.js',
-  '/static/manifest.json',
-  '/static/icons/icon.svg',
-  '/static/icons/icon-192.png',
-  '/static/icons/icon-512.png',
-  '/static/icons/apple-touch-icon.png',
-  '/static/icons/favicon.png'
+  './',
+  'manifest.json',
+  'style.css',
+  'app.js',
+  'icons/icon.svg',
+  'icons/icon-192.png',
+  'icons/icon-512.png',
+  'icons/apple-touch-icon.png',
+  'icons/favicon.png'
 ];
 
 // Install: Cache core application assets
