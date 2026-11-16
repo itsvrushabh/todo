@@ -48,7 +48,6 @@ pub fn create_router(storage: Arc<JsonTodoStorage>) -> Router {
         // Web & PWA routes
         .route("/", get(serve_index))
         .route("/manifest.json", get(serve_manifest))
-        .route("/sw.js", get(serve_sw))
         .route("/favicon.ico", get(serve_favicon))
         .route("/icons/{*path}", get(serve_icons))
         .route("/static/{*path}", get(serve_static))
@@ -226,24 +225,6 @@ async fn serve_manifest() -> impl IntoResponse {
             response
         }
         None => (StatusCode::NOT_FOUND, "Manifest not found").into_response(),
-    }
-}
-
-async fn serve_sw() -> impl IntoResponse {
-    match Assets::get("sw.js") {
-        Some(content) => {
-            let mut response = Response::new(content.data.into());
-            response.headers_mut().insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static("application/javascript"),
-            );
-            response.headers_mut().insert(
-                header::HeaderName::from_static("service-worker-allowed"),
-                HeaderValue::from_static("/"),
-            );
-            response
-        }
-        None => (StatusCode::NOT_FOUND, "Service worker not found").into_response(),
     }
 }
 
