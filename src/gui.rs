@@ -130,6 +130,8 @@ pub struct TodoGuiApp {
     pub sync_status: SyncStatus,
     pub show_settings_dialog: bool,
     pub pending_sync_events: std::sync::Arc<std::sync::Mutex<Vec<SyncResult>>>,
+    pub pending_mutations: Vec<crate::models::PendingMutation>,
+    pub is_draining_queue: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,13 +139,54 @@ pub enum SyncStatus {
     LocalOnly,
     Syncing,
     Connected,
+    Offline { pending_count: usize },
     Error(String),
 }
 
 pub enum SyncResult {
     FetchedTodos(Vec<TodoItem>),
+    MutationDrained {
+        success: bool,
+        error: Option<String>,
+    },
     SyncError(String),
     SuccessMessage(String),
+}
+
+impl crate::models::PendingMutation {
+    pub fn to_request(&self, base_url: &str) -> ehttp::Request {
+        let base = base_url.trim_end_matches('/');
+        match self {
+            crate::models::PendingMutation::Create(create) => {
+                let body = serde_json::to_vec(create).unwrap_or_default();
+                ehttp::Request::new(
+                    ehttp::Method::POST,
+                    format!("{base}/api/todos"),
+                    &[("Accept", "*/*"), ("Content-Type", "application/json")],
+                )
+                .with_body(body)
+            }
+            crate::models::PendingMutation::Update { id, update } => {
+                let body = serde_json::to_vec(update).unwrap_or_default();
+                ehttp::Request::new(
+                    ehttp::Method::PUT,
+                    format!("{base}/api/todos/{id}"),
+                    &[("Accept", "*/*"), ("Content-Type", "application/json")],
+                )
+                .with_body(body)
+            }
+            crate::models::PendingMutation::Delete { id } => ehttp::Request::new(
+                ehttp::Method::DELETE,
+                format!("{base}/api/todos/{id}"),
+                &[("Accept", "*/*")],
+            ),
+            crate::models::PendingMutation::Toggle { id } => ehttp::Request::new(
+                ehttp::Method::PATCH,
+                format!("{base}/api/todos/{id}/toggle"),
+                &[("Accept", "*/*")],
+            ),
+        }
+    }
 }
 
 impl TodoGuiApp {
@@ -175,6 +218,8 @@ impl TodoGuiApp {
             sync_status: SyncStatus::LocalOnly,
             show_settings_dialog: false,
             pending_sync_events: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            pending_mutations: Vec::new(),
+            is_draining_queue: false,
         };
         app.load_todos();
         app
@@ -184,6 +229,16 @@ impl TodoGuiApp {
         #[cfg(not(target_arch = "wasm32"))]
         {
             if let Some(ref path) = self.storage_path {
+                let queue_path = path.with_extension("queue.json");
+                if queue_path.exists() {
+                    if let Ok(data) = std::fs::read_to_string(&queue_path) {
+                        if let Ok(mutations) =
+                            serde_json::from_str::<Vec<crate::models::PendingMutation>>(&data)
+                        {
+                            self.pending_mutations = mutations;
+                        }
+                    }
+                }
                 if path.exists() {
                     if let Ok(data) = std::fs::read_to_string(path) {
                         if let Ok(items) = serde_json::from_str::<Vec<TodoItem>>(&data) {
@@ -203,6 +258,13 @@ impl TodoGuiApp {
                         if !url.trim().is_empty() {
                             self.server_url = url;
                             self.sync_status = SyncStatus::Connected;
+                        }
+                    }
+                    if let Ok(Some(data)) = storage.get_item("taskmaster_pending_mutations") {
+                        if let Ok(mutations) =
+                            serde_json::from_str::<Vec<crate::models::PendingMutation>>(&data)
+                        {
+                            self.pending_mutations = mutations;
                         }
                     }
                     if let Ok(Some(data)) = storage.get_item("taskmaster_todos") {
@@ -244,6 +306,13 @@ impl TodoGuiApp {
         #[cfg(not(target_arch = "wasm32"))]
         {
             if let Some(ref path) = self.storage_path {
+                let queue_path = path.with_extension("queue.json");
+                if self.pending_mutations.is_empty() {
+                    let _ = std::fs::remove_file(&queue_path);
+                } else if let Ok(json) = serde_json::to_string_pretty(&self.pending_mutations) {
+                    let _ = std::fs::write(&queue_path, json);
+                }
+
                 if let Ok(json) = serde_json::to_string_pretty(&self.todos) {
                     if let Some(parent) = path.parent() {
                         let _ = std::fs::create_dir_all(parent);
@@ -260,6 +329,9 @@ impl TodoGuiApp {
                     let _ = storage.set_item("taskmaster_server_url", &self.server_url);
                     if let Ok(json) = serde_json::to_string(&self.todos) {
                         let _ = storage.set_item("taskmaster_todos", &json);
+                    }
+                    if let Ok(json) = serde_json::to_string(&self.pending_mutations) {
+                        let _ = storage.set_item("taskmaster_pending_mutations", &json);
                     }
                 }
             }
@@ -286,7 +358,20 @@ impl TodoGuiApp {
         }
         item.recurrence = self.new_recurrence;
 
-        self.todos.push(item);
+        self.todos.push(item.clone());
+
+        if !self.server_url.trim().is_empty() {
+            self.pending_mutations
+                .push(crate::models::PendingMutation::Create(
+                    crate::models::TodoCreate {
+                        title: item.title.clone(),
+                        description: item.description.clone(),
+                        priority: Some(item.priority),
+                        due_date: item.due_date.clone(),
+                        recurrence: item.recurrence,
+                    },
+                ));
+        }
 
         self.new_title.clear();
         self.new_description.clear();
@@ -310,12 +395,22 @@ impl TodoGuiApp {
                 todo.completed = !todo.completed;
             }
             todo.updated_at = Some(Utc::now().to_rfc3339());
+
+            if !self.server_url.trim().is_empty() {
+                self.pending_mutations
+                    .push(crate::models::PendingMutation::Toggle { id });
+            }
+
             self.save_todos();
         }
     }
 
     pub fn delete_todo(&mut self, id: i64) {
         self.todos.retain(|t| t.id != id);
+        if !self.server_url.trim().is_empty() {
+            self.pending_mutations
+                .push(crate::models::PendingMutation::Delete { id });
+        }
         self.save_todos();
     }
 
@@ -334,22 +429,40 @@ impl TodoGuiApp {
         if let Some(id) = self.editing_id {
             let trimmed = self.edit_title.trim();
             if !trimmed.is_empty() {
+                let desc = if self.edit_description.trim().is_empty() {
+                    None
+                } else {
+                    Some(self.edit_description.trim().to_string())
+                };
+                let due = if self.edit_due_date.trim().is_empty() {
+                    None
+                } else {
+                    Some(self.edit_due_date.trim().to_string())
+                };
+
                 if let Some(todo) = self.todos.iter_mut().find(|t| t.id == id) {
                     todo.title = trimmed.to_string();
-                    todo.description = if self.edit_description.trim().is_empty() {
-                        None
-                    } else {
-                        Some(self.edit_description.trim().to_string())
-                    };
+                    todo.description = desc.clone();
                     todo.priority = self.edit_priority;
-                    let due_trimmed = self.edit_due_date.trim();
-                    todo.due_date = if due_trimmed.is_empty() {
-                        None
-                    } else {
-                        Some(due_trimmed.to_string())
-                    };
+                    todo.due_date = due.clone();
                     todo.recurrence = self.edit_recurrence;
                     todo.updated_at = Some(Utc::now().to_rfc3339());
+
+                    if !self.server_url.trim().is_empty() {
+                        self.pending_mutations
+                            .push(crate::models::PendingMutation::Update {
+                                id,
+                                update: crate::models::TodoUpdate {
+                                    title: Some(trimmed.to_string()),
+                                    description: desc,
+                                    completed: None,
+                                    priority: Some(self.edit_priority),
+                                    due_date: due,
+                                    recurrence: self.edit_recurrence,
+                                },
+                            });
+                    }
+
                     self.save_todos();
                 }
             }
@@ -403,6 +516,52 @@ impl TodoGuiApp {
         }
         self.save_todos();
         Ok(count)
+    }
+
+    pub fn drain_next_mutation(&mut self, ctx: egui::Context) {
+        if self.is_draining_queue || self.pending_mutations.is_empty() {
+            return;
+        }
+
+        let trimmed_url = self.server_url.trim().trim_end_matches('/');
+        if trimmed_url.is_empty() {
+            self.sync_status = SyncStatus::LocalOnly;
+            return;
+        }
+
+        self.is_draining_queue = true;
+        self.sync_status = SyncStatus::Syncing;
+
+        let mutation = self.pending_mutations[0].clone();
+        let request = mutation.to_request(trimmed_url);
+        let pending = self.pending_sync_events.clone();
+
+        ehttp::fetch(request, move |result| {
+            if let Ok(mut guard) = pending.lock() {
+                match result {
+                    Ok(response) => {
+                        if response.status >= 200 && response.status < 300 {
+                            guard.push(SyncResult::MutationDrained {
+                                success: true,
+                                error: None,
+                            });
+                        } else {
+                            guard.push(SyncResult::MutationDrained {
+                                success: false,
+                                error: Some(format!("Server returned HTTP {}", response.status)),
+                            });
+                        }
+                    }
+                    Err(err) => {
+                        guard.push(SyncResult::MutationDrained {
+                            success: false,
+                            error: Some(format!("Network unreachable: {err}")),
+                        });
+                    }
+                }
+            }
+            ctx.request_repaint();
+        });
     }
 
     pub fn fetch_from_server(&mut self, ctx: egui::Context) {
@@ -529,6 +688,9 @@ impl eframe::App for TodoGuiApp {
             Err(_) => Vec::new(),
         };
 
+        let mut trigger_drain = false;
+        let mut trigger_fetch = false;
+
         for event in events {
             match event {
                 SyncResult::FetchedTodos(items) => {
@@ -536,11 +698,59 @@ impl eframe::App for TodoGuiApp {
                     self.sync_status = SyncStatus::Connected;
                     self.save_todos();
                 }
+                SyncResult::MutationDrained { success, error: _ } => {
+                    self.is_draining_queue = false;
+                    if success {
+                        if !self.pending_mutations.is_empty() {
+                            self.pending_mutations.remove(0);
+                            self.save_todos();
+                        }
+                        if !self.pending_mutations.is_empty() {
+                            trigger_drain = true;
+                        } else {
+                            self.sync_status = SyncStatus::Connected;
+                            trigger_fetch = true;
+                        }
+                    } else {
+                        self.sync_status = SyncStatus::Offline {
+                            pending_count: self.pending_mutations.len(),
+                        };
+                        ctx.request_repaint_after(std::time::Duration::from_secs(5));
+                    }
+                }
                 SyncResult::SyncError(err) => {
-                    self.sync_status = SyncStatus::Error(err);
+                    if !self.pending_mutations.is_empty() {
+                        self.sync_status = SyncStatus::Offline {
+                            pending_count: self.pending_mutations.len(),
+                        };
+                        ctx.request_repaint_after(std::time::Duration::from_secs(5));
+                    } else {
+                        self.sync_status = SyncStatus::Error(err);
+                    }
                 }
                 SyncResult::SuccessMessage(_) => {
                     self.sync_status = SyncStatus::Connected;
+                }
+            }
+        }
+
+        if trigger_drain {
+            self.drain_next_mutation(ctx.clone());
+        } else if trigger_fetch {
+            self.fetch_from_server(ctx.clone());
+        }
+
+        // Automatic retry/drain if queue is non-empty and not currently draining
+        if !self.pending_mutations.is_empty()
+            && !self.is_draining_queue
+            && !self.server_url.trim().is_empty()
+        {
+            match &self.sync_status {
+                SyncStatus::Offline { .. } => {
+                    ctx.request_repaint_after(std::time::Duration::from_secs(5));
+                }
+                _ => {
+                    self.drain_next_mutation(ctx.clone());
                 }
             }
         }
@@ -635,20 +845,58 @@ impl eframe::App for TodoGuiApp {
                                 {
                                     trigger_fetch = true;
                                 }
+                                let (label_text, label_color) =
+                                    if !self.pending_mutations.is_empty() {
+                                        (
+                                            format!("⚠️ {} queued", self.pending_mutations.len()),
+                                            egui::Color32::from_rgb(250, 179, 135),
+                                        )
+                                    } else {
+                                        (
+                                            "🟢 Synchronized".to_string(),
+                                            egui::Color32::from_rgb(166, 227, 161),
+                                        )
+                                    };
                                 ui.label(
-                                    egui::RichText::new("🟢 Online")
-                                        .color(egui::Color32::from_rgb(166, 227, 161))
+                                    egui::RichText::new(label_text)
+                                        .color(label_color)
                                         .size(11.0)
                                         .strong(),
                                 )
                                 .on_hover_text(format!("Connected to {}", self.server_url));
                             }
                             SyncStatus::Syncing => {
+                                let label_text = if !self.pending_mutations.is_empty() {
+                                    format!(
+                                        "🔄 Syncing ({} pending)...",
+                                        self.pending_mutations.len()
+                                    )
+                                } else {
+                                    "🔄 Syncing...".to_string()
+                                };
                                 ui.label(
-                                    egui::RichText::new("🔄 Syncing...")
-                                        .color(egui::Color32::from_rgb(250, 179, 135))
+                                    egui::RichText::new(label_text)
+                                        .color(egui::Color32::from_rgb(137, 180, 250))
                                         .size(11.0),
                                 );
+                            }
+                            SyncStatus::Offline { pending_count } => {
+                                if ui
+                                    .small_button("🔄")
+                                    .on_hover_text("Retry connection & sync queue")
+                                    .clicked()
+                                {
+                                    trigger_drain = true;
+                                }
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "⚠️ Offline ({pending_count} pending)"
+                                    ))
+                                    .color(egui::Color32::from_rgb(250, 179, 135))
+                                    .size(11.0)
+                                    .strong(),
+                                )
+                                .on_hover_text("Backend unreachable. Mutations saved locally and will auto-sync on reconnect.");
                             }
                             SyncStatus::Error(err) => {
                                 if ui
@@ -1362,6 +1610,15 @@ impl eframe::App for TodoGuiApp {
                                     .color(egui::Color32::from_rgb(250, 179, 135)),
                             );
                         }
+                        SyncStatus::Offline { pending_count } => {
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "⚠️ Status: Offline ({pending_count} pending mutations queued)"
+                                ))
+                                .color(egui::Color32::from_rgb(250, 179, 135))
+                                .strong(),
+                            );
+                        }
                         SyncStatus::LocalOnly => {
                             ui.label(
                                 egui::RichText::new("🟡 Status: Local Storage Only (Offline)")
@@ -1376,6 +1633,24 @@ impl eframe::App for TodoGuiApp {
                         }
                     }
 
+                    if !self.pending_mutations.is_empty() {
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "📦 Change Queue: {} pending items",
+                                    self.pending_mutations.len()
+                                ))
+                                .size(12.0)
+                                .color(egui::Color32::from_rgb(203, 166, 247)),
+                            );
+                            if ui.button("Clear Queue").clicked() {
+                                self.pending_mutations.clear();
+                                self.save_todos();
+                            }
+                        });
+                    }
+
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
                         if ui.button("🔍 Test Connection").clicked() {
@@ -1383,6 +1658,9 @@ impl eframe::App for TodoGuiApp {
                         }
                         if ui.button("🔄 Sync Todos Now").clicked() {
                             do_fetch = true;
+                        }
+                        if !self.pending_mutations.is_empty() && ui.button("⚡ Flush Queue").clicked() {
+                            self.drain_next_mutation(ctx.clone());
                         }
                         if ui.button("Local Only").clicked() {
                             do_disconnect = true;
@@ -1483,10 +1761,72 @@ mod tests {
         app.sync_status = SyncStatus::Connected;
         assert_eq!(app.sync_status, SyncStatus::Connected);
 
+        app.sync_status = SyncStatus::Offline { pending_count: 3 };
+        assert_eq!(app.sync_status, SyncStatus::Offline { pending_count: 3 });
+
         app.sync_status = SyncStatus::Error("Connection refused".to_string());
         match app.sync_status {
             SyncStatus::Error(ref msg) => assert!(msg.contains("Connection refused")),
             _ => panic!("Expected SyncStatus::Error"),
         }
+    }
+
+    #[test]
+    fn test_offline_mutation_queue() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("gui_todos.json");
+        let mut app = TodoGuiApp::new(Some(file_path.clone()));
+        app.server_url = "http://localhost:8000".to_string();
+        app.todos.clear();
+        app.pending_mutations.clear();
+
+        // 1. Add task while configured with server URL
+        app.new_title = "Queued Task".to_string();
+        app.new_priority = Priority::High;
+        app.add_todo();
+        assert_eq!(app.todos.len(), 1);
+        assert_eq!(app.pending_mutations.len(), 1);
+        match &app.pending_mutations[0] {
+            crate::models::PendingMutation::Create(create) => {
+                assert_eq!(create.title, "Queued Task");
+                assert_eq!(create.priority, Some(Priority::High));
+            }
+            _ => panic!("Expected Create mutation"),
+        }
+
+        // 2. Toggle task
+        let task_id = app.todos[0].id;
+        app.toggle_todo(task_id);
+        assert_eq!(app.pending_mutations.len(), 2);
+        match &app.pending_mutations[1] {
+            crate::models::PendingMutation::Toggle { id } => assert_eq!(*id, task_id),
+            _ => panic!("Expected Toggle mutation"),
+        }
+
+        // 3. Edit task
+        app.start_edit(task_id);
+        app.edit_title = "Updated Queued Task".to_string();
+        app.save_edit();
+        assert_eq!(app.pending_mutations.len(), 3);
+        match &app.pending_mutations[2] {
+            crate::models::PendingMutation::Update { id, update } => {
+                assert_eq!(*id, task_id);
+                assert_eq!(update.title, Some("Updated Queued Task".to_string()));
+            }
+            _ => panic!("Expected Update mutation"),
+        }
+
+        // 4. Delete task
+        app.delete_todo(task_id);
+        assert_eq!(app.todos.len(), 0);
+        assert_eq!(app.pending_mutations.len(), 4);
+        match &app.pending_mutations[3] {
+            crate::models::PendingMutation::Delete { id } => assert_eq!(*id, task_id),
+            _ => panic!("Expected Delete mutation"),
+        }
+
+        // 5. Verify persistence in file queue
+        let reloaded_app = TodoGuiApp::new(Some(file_path));
+        assert_eq!(reloaded_app.pending_mutations.len(), 4);
     }
 }
