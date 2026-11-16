@@ -494,3 +494,110 @@ fn test_storage_tombstones_and_differential_sync() {
         .iter()
         .any(|t| t.uuid.as_deref() == Some("uuid-333")));
 }
+
+#[test]
+fn test_memory_storage_engine() {
+    use todo::storage::{MemoryTodoStorage, TodoStorage};
+
+    let storage: Box<dyn TodoStorage> = Box::new(MemoryTodoStorage::new());
+
+    // 1. Initial empty
+    assert_eq!(storage.get_all(None, None, None, None).unwrap().len(), 0);
+
+    // 2. Create
+    let item = storage
+        .create(TodoCreate {
+            title: "Memory Task".into(),
+            description: Some("In memory".into()),
+            priority: Some(Priority::High),
+            due_date: None,
+            recurrence: None,
+            uuid: Some("mem-uuid-1".into()),
+            tags: vec!["ephemeral".into()],
+            subtasks: Vec::new(),
+        })
+        .unwrap();
+    assert_eq!(item.id, 1);
+    assert_eq!(item.title, "Memory Task");
+
+    // 3. Lookup by UUID & ID
+    assert_eq!(
+        storage.get_by_uuid("mem-uuid-1").unwrap().unwrap().title,
+        "Memory Task"
+    );
+    assert_eq!(storage.get_by_id(1).unwrap().unwrap().title, "Memory Task");
+
+    // 4. Toggle
+    let toggled = storage.toggle(1).unwrap().unwrap();
+    assert!(toggled.completed);
+
+    // 5. Delete & Tombstone
+    assert!(storage.delete(1).unwrap());
+    assert_eq!(storage.get_all(None, None, None, None).unwrap().len(), 0);
+    assert_eq!(storage.get_tombstones().unwrap().len(), 1);
+    assert_eq!(storage.get_tombstones().unwrap()[0].uuid, "mem-uuid-1");
+}
+
+#[cfg(feature = "sqlite")]
+#[test]
+fn test_sqlite_storage_engine() {
+    use todo::storage::{SqliteTodoStorage, TodoStorage};
+
+    let storage: Box<dyn TodoStorage> = Box::new(SqliteTodoStorage::in_memory().unwrap());
+
+    // 1. Initial empty
+    assert_eq!(storage.get_all(None, None, None, None).unwrap().len(), 0);
+
+    // 2. Create with subtasks and tags
+    let item = storage
+        .create(TodoCreate {
+            title: "SQLite Task".into(),
+            description: Some("Relational DB".into()),
+            priority: Some(Priority::High),
+            due_date: Some("2026-12-01".into()),
+            recurrence: None,
+            uuid: Some("sqlite-uuid-1".into()),
+            tags: vec!["db".into(), "sql".into()],
+            subtasks: vec![todo::models::Subtask::new("Migration")],
+        })
+        .unwrap();
+    assert_eq!(item.id, 1);
+    assert_eq!(item.title, "SQLite Task");
+    assert_eq!(item.subtasks.len(), 1);
+
+    // 3. Lookup
+    let fetched = storage.get_by_uuid("sqlite-uuid-1").unwrap().unwrap();
+    assert_eq!(fetched.id, 1);
+    assert_eq!(fetched.tags, vec!["db", "sql"]);
+
+    // 4. Toggle subtask
+    let sub_id = &fetched.subtasks[0].id;
+    let toggled_sub = storage.toggle_subtask(1, sub_id).unwrap().unwrap();
+    assert!(toggled_sub.subtasks[0].completed);
+
+    // 5. Filter by tag
+    let tag_match = storage.get_all(None, None, None, Some("db")).unwrap();
+    assert_eq!(tag_match.len(), 1);
+    let no_match = storage
+        .get_all(None, None, None, Some("nonexistent"))
+        .unwrap();
+    assert_eq!(no_match.len(), 0);
+
+    // 6. Stats
+    let stats = storage.get_stats().unwrap();
+    assert_eq!(stats.total, 1);
+    assert_eq!(stats.active, 1);
+    assert_eq!(stats.completed, 0);
+
+    // 7. Toggle item
+    let toggled = storage.toggle(1).unwrap().unwrap();
+    assert!(toggled.completed);
+    assert_eq!(storage.get_stats().unwrap().completed, 1);
+
+    // 8. Delete & Tombstones
+    assert!(storage.delete(1).unwrap());
+    assert_eq!(storage.get_all(None, None, None, None).unwrap().len(), 0);
+    let tombstones = storage.get_tombstones().unwrap();
+    assert_eq!(tombstones.len(), 1);
+    assert_eq!(tombstones[0].uuid, "sqlite-uuid-1");
+}

@@ -1,5 +1,5 @@
 use crate::models::{Priority, TodoCreate, TodoItem, TodoStats};
-use crate::storage::JsonTodoStorage;
+use crate::storage::TodoStorage;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -95,7 +95,7 @@ pub enum Commands {
 }
 
 pub fn list_todos(
-    storage: Arc<JsonTodoStorage>,
+    storage: Arc<dyn TodoStorage>,
     status: Option<&str>,
     search: Option<&str>,
     priority: Option<&str>,
@@ -180,7 +180,7 @@ pub fn list_todos(
 
 #[allow(clippy::too_many_arguments)]
 pub fn add_todo(
-    storage: Arc<JsonTodoStorage>,
+    storage: Arc<dyn TodoStorage>,
     title: String,
     description: Option<String>,
     priority: Option<Priority>,
@@ -227,7 +227,7 @@ pub fn add_todo(
 }
 
 pub fn toggle_todo(
-    storage: Arc<JsonTodoStorage>,
+    storage: Arc<dyn TodoStorage>,
     id: i64,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match storage.toggle(id)? {
@@ -259,7 +259,7 @@ pub fn toggle_todo(
 }
 
 pub fn delete_todo(
-    storage: Arc<JsonTodoStorage>,
+    storage: Arc<dyn TodoStorage>,
     id: i64,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if storage.delete(id)? {
@@ -270,13 +270,13 @@ pub fn delete_todo(
     Ok(())
 }
 
-pub fn clear_completed(storage: Arc<JsonTodoStorage>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn clear_completed(storage: Arc<dyn TodoStorage>) -> Result<(), Box<dyn std::error::Error>> {
     let count = storage.clear_completed()?;
     println!("🧹 Cleared {count} completed task(s)");
     Ok(())
 }
 
-pub fn show_stats(storage: Arc<JsonTodoStorage>) -> Result<TodoStats, Box<dyn std::error::Error>> {
+pub fn show_stats(storage: Arc<dyn TodoStorage>) -> Result<TodoStats, Box<dyn std::error::Error>> {
     let stats = storage.get_stats()?;
     println!("\n📊 Todo Statistics:");
     println!("   Total tasks:          {}", stats.total);

@@ -9,7 +9,7 @@ async fn spawn_test_server() -> (String, Arc<JsonTodoStorage>, TempDir) {
     let storage_file = dir.path().join("todos.json");
     let storage = Arc::new(JsonTodoStorage::new(&storage_file).unwrap());
 
-    let app = create_router(Arc::clone(&storage));
+    let app = create_router(Arc::clone(&storage) as Arc<dyn todo::storage::TodoStorage>);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let base_url = format!("http://127.0.0.1:{port}");
