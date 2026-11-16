@@ -28,6 +28,19 @@ TaskMaster runs seamlessly as an **interactive terminal UI (TUI)**, a **native d
 
 ## 🚀 Quick Start
 
+### Package Manager Installation
+
+```bash
+# Arch Linux (AUR)
+yay -S todo-bin
+# or: paru -S todo-bin
+
+# macOS & Linux (Homebrew)
+brew tap itsvrushabh/tap && brew install todo
+```
+
+### From Source (Cargo)
+
 ### 1. Launch the Native Desktop GUI
 ```bash
 cargo run --release -- gui

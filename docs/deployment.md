@@ -20,6 +20,39 @@ Extract the archive and move `todo` (or `todo.exe`) to your `$PATH` (e.g. `/usr/
 
 ---
 
+## 📦 Package Managers
+
+### 1. Arch Linux (AUR)
+Install using your favorite AUR helper:
+```bash
+# Using yay
+yay -S todo-bin
+
+# Using paru
+paru -S todo-bin
+```
+
+Or clone and build manually from the AUR:
+```bash
+git clone https://aur.archlinux.org/todo-bin.git
+cd todo-bin
+makepkg -si
+```
+
+### 2. Homebrew (macOS & Linux)
+Install via the official tap:
+```bash
+brew tap itsvrushabh/tap
+brew install todo
+```
+
+Or install directly from the repository formula:
+```bash
+brew install https://raw.githubusercontent.com/itsvrushabh/todo/main/Formula/todo.rb
+```
+
+---
+
 ## 🐳 Docker Deployment
 
 ### 1. Docker Compose (Recommended)
