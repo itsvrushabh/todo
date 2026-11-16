@@ -357,3 +357,140 @@ fn test_storage_subtasks_lifecycle() {
     assert!(!toggled_back.subtasks[0].completed);
     assert_eq!(toggled_back.subtask_progress(), Some((0, 2)));
 }
+
+#[test]
+fn test_storage_tombstones_and_differential_sync() {
+    let dir = tempdir().unwrap();
+    let file_path = dir.path().join("todos_sync.json");
+    let storage = JsonTodoStorage::new(&file_path).unwrap();
+
+    // 1. Create items
+    let task1 = storage
+        .create(TodoCreate {
+            title: "Task 1 to delete".to_string(),
+            description: None,
+            priority: Some(Priority::Low),
+            due_date: None,
+            recurrence: None,
+            uuid: Some("uuid-111".to_string()),
+            tags: Vec::new(),
+            subtasks: Vec::new(),
+        })
+        .unwrap();
+
+    let task2 = storage
+        .create(TodoCreate {
+            title: "Task 2 to update".to_string(),
+            description: None,
+            priority: Some(Priority::Medium),
+            due_date: None,
+            recurrence: None,
+            uuid: Some("uuid-222".to_string()),
+            tags: Vec::new(),
+            subtasks: Vec::new(),
+        })
+        .unwrap();
+
+    let _task3 = storage
+        .create(TodoCreate {
+            title: "Task 3 untouched".to_string(),
+            description: None,
+            priority: Some(Priority::High),
+            due_date: None,
+            recurrence: None,
+            uuid: Some("uuid-333".to_string()),
+            tags: Vec::new(),
+            subtasks: Vec::new(),
+        })
+        .unwrap();
+
+    // Initial full sync (since = None)
+    let full_sync = storage.get_sync(None).unwrap();
+    assert_eq!(full_sync.updated_todos.len(), 3);
+    assert_eq!(full_sync.deleted_uuids.len(), 0);
+
+    // Save timestamp before modifications
+    let checkpoint = full_sync.server_timestamp;
+
+    // Small delay to ensure timestamp strictly advances
+    std::thread::sleep(std::time::Duration::from_millis(15));
+
+    // Delete task 1
+    assert!(storage.delete(task1.id).unwrap());
+    let tombstones = storage.get_tombstones().unwrap();
+    assert_eq!(tombstones.len(), 1);
+    assert_eq!(tombstones[0].uuid, "uuid-111");
+
+    // Update task 2
+    storage
+        .update(
+            task2.id,
+            TodoUpdate {
+                title: Some("Task 2 updated".to_string()),
+                description: None,
+                completed: Some(true),
+                priority: None,
+                due_date: None,
+                recurrence: None,
+                uuid: None,
+                tags: None,
+                subtasks: None,
+            },
+        )
+        .unwrap();
+
+    // Differential sync since checkpoint
+    let diff_sync = storage.get_sync(Some(&checkpoint)).unwrap();
+    assert_eq!(diff_sync.updated_todos.len(), 1);
+    assert_eq!(diff_sync.updated_todos[0].uuid.as_deref(), Some("uuid-222"));
+    assert_eq!(diff_sync.updated_todos[0].title, "Task 2 updated");
+    assert_eq!(diff_sync.deleted_uuids, vec!["uuid-111"]);
+
+    // Test apply_sync on another storage instance
+    let client_path = dir.path().join("client_todos.json");
+    let client_storage = JsonTodoStorage::new(&client_path).unwrap();
+
+    // Client initially has task 1 and task 3
+    client_storage
+        .create(TodoCreate {
+            title: "Task 1 on client".to_string(),
+            description: None,
+            priority: Some(Priority::Low),
+            due_date: None,
+            recurrence: None,
+            uuid: Some("uuid-111".to_string()),
+            tags: Vec::new(),
+            subtasks: Vec::new(),
+        })
+        .unwrap();
+
+    client_storage
+        .create(TodoCreate {
+            title: "Task 3 on client".to_string(),
+            description: None,
+            priority: Some(Priority::High),
+            due_date: None,
+            recurrence: None,
+            uuid: Some("uuid-333".to_string()),
+            tags: Vec::new(),
+            subtasks: Vec::new(),
+        })
+        .unwrap();
+
+    // Apply the differential sync to client
+    let result = client_storage.apply_sync(diff_sync).unwrap();
+    assert_eq!(result.applied_deletions, 1); // uuid-111 removed
+    assert_eq!(result.applied_updates, 1); // uuid-222 added
+
+    let client_todos = client_storage.get_all(None, None, None, None).unwrap();
+    assert_eq!(client_todos.len(), 2);
+    assert!(!client_todos
+        .iter()
+        .any(|t| t.uuid.as_deref() == Some("uuid-111")));
+    assert!(client_todos
+        .iter()
+        .any(|t| t.uuid.as_deref() == Some("uuid-222")));
+    assert!(client_todos
+        .iter()
+        .any(|t| t.uuid.as_deref() == Some("uuid-333")));
+}

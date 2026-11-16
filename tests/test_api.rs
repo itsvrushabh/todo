@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use tempfile::{tempdir, TempDir};
-use todo::models::{Priority, TodoCreate, TodoItem, TodoStats};
+use todo::models::{Priority, SyncApplyResult, SyncResponse, TodoCreate, TodoItem, TodoStats};
 use todo::server::create_router;
 use todo::storage::JsonTodoStorage;
 
@@ -282,4 +282,114 @@ async fn test_tag_filtering_and_subtasks_api() {
     let updated: TodoItem = res.json().await.unwrap();
     assert!(updated.subtasks[0].completed);
     assert!(!updated.subtasks[1].completed);
+}
+
+#[tokio::test]
+async fn test_differential_sync_api() {
+    let (base_url, _, _dir) = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    // 1. Initial sync (empty)
+    let res = client
+        .get(format!("{base_url}/api/sync"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let initial_sync: SyncResponse = res.json().await.unwrap();
+    assert_eq!(initial_sync.updated_todos.len(), 0);
+    assert_eq!(initial_sync.deleted_uuids.len(), 0);
+
+    // 2. Create a task with UUID
+    let task_req = serde_json::json!({
+        "title": "Sync API Test Task",
+        "uuid": "test-sync-uuid-1",
+        "priority": "medium"
+    });
+    let res = client
+        .post(format!("{base_url}/api/todos"))
+        .json(&task_req)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let created: TodoItem = res.json().await.unwrap();
+
+    // 3. Sync after creation
+    let res = client
+        .get(format!("{base_url}/api/sync"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let after_create: SyncResponse = res.json().await.unwrap();
+    assert_eq!(after_create.updated_todos.len(), 1);
+    assert_eq!(
+        after_create.updated_todos[0].uuid.as_deref(),
+        Some("test-sync-uuid-1")
+    );
+
+    let checkpoint = after_create.server_timestamp;
+    tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+
+    // 4. Delete the task
+    let res = client
+        .delete(format!("{base_url}/api/todos/{}", created.id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+
+    // 5. Differential sync with ?since=checkpoint
+    let res = client
+        .get(format!("{base_url}/api/sync?since={checkpoint}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let diff: SyncResponse = res.json().await.unwrap();
+    assert_eq!(diff.updated_todos.len(), 0);
+    assert_eq!(diff.deleted_uuids, vec!["test-sync-uuid-1"]);
+
+    // 6. Push sync batch to POST /api/sync
+    let push_payload = SyncResponse {
+        updated_todos: vec![TodoItem {
+            id: 0,
+            uuid: Some("batch-pushed-uuid".to_string()),
+            title: "Batch Pushed Task".to_string(),
+            description: None,
+            priority: Priority::High,
+            completed: false,
+            created_at: "2026-11-16T12:00:00Z".to_string(),
+            updated_at: Some("2026-11-16T12:30:00Z".to_string()),
+            due_date: None,
+            recurrence: None,
+            estimated_minutes: None,
+            tags: Vec::new(),
+            subtasks: Vec::new(),
+        }],
+        deleted_uuids: Vec::new(),
+        server_timestamp: "2026-11-16T12:30:00Z".to_string(),
+    };
+
+    let res = client
+        .post(format!("{base_url}/api/sync"))
+        .json(&push_payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let apply_res: SyncApplyResult = res.json().await.unwrap();
+    assert_eq!(apply_res.applied_updates, 1);
+
+    // Verify task is now in /api/todos
+    let res = client
+        .get(format!("{base_url}/api/todos"))
+        .send()
+        .await
+        .unwrap();
+    let todos: Vec<TodoItem> = res.json().await.unwrap();
+    assert!(todos
+        .iter()
+        .any(|t| t.uuid.as_deref() == Some("batch-pushed-uuid")));
 }

@@ -1,4 +1,6 @@
-use crate::models::{TodoCreate, TodoItem, TodoStats, TodoUpdate};
+use crate::models::{
+    SyncApplyResult, SyncResponse, TodoCreate, TodoItem, TodoStats, TodoUpdate, Tombstone,
+};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -42,6 +44,8 @@ impl From<serde_json::Error> for StorageError {
 struct StorageData {
     next_id: i64,
     todos: Vec<TodoItem>,
+    #[serde(default)]
+    tombstones: Vec<Tombstone>,
 }
 
 impl Default for StorageData {
@@ -49,6 +53,7 @@ impl Default for StorageData {
         Self {
             next_id: 1,
             todos: Vec::new(),
+            tombstones: Vec::new(),
         }
     }
 }
@@ -370,10 +375,43 @@ impl JsonTodoStorage {
         let _guard = self.write_lock();
         let mut data = self.load_raw_locked()?;
 
-        let original_len = data.todos.len();
-        data.todos.retain(|t| t.id != id);
+        if let Some(pos) = data.todos.iter().position(|t| t.id == id) {
+            let removed = data.todos.remove(pos);
+            if let Some(uuid) = removed.uuid {
+                if !uuid.trim().is_empty() {
+                    data.tombstones.push(Tombstone {
+                        uuid,
+                        deleted_at: Utc::now().to_rfc3339(),
+                    });
+                }
+            }
+            self.save_raw_locked(&data)?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
 
-        if data.todos.len() != original_len {
+    pub fn delete_by_uuid(&self, uuid: &str) -> Result<bool, StorageError> {
+        let trimmed = uuid.trim();
+        if trimmed.is_empty() {
+            return Ok(false);
+        }
+        let _guard = self.write_lock();
+        let mut data = self.load_raw_locked()?;
+
+        if let Some(pos) = data
+            .todos
+            .iter()
+            .position(|t| t.uuid.as_deref() == Some(trimmed))
+        {
+            let removed = data.todos.remove(pos);
+            if let Some(u) = removed.uuid {
+                data.tombstones.push(Tombstone {
+                    uuid: u,
+                    deleted_at: Utc::now().to_rfc3339(),
+                });
+            }
             self.save_raw_locked(&data)?;
             Ok(true)
         } else {
@@ -385,14 +423,160 @@ impl JsonTodoStorage {
         let _guard = self.write_lock();
         let mut data = self.load_raw_locked()?;
 
-        let original_len = data.todos.len();
-        data.todos.retain(|t| !t.completed);
-        let removed = original_len - data.todos.len();
+        let mut removed = 0;
+        let mut now_tombstones = Vec::new();
+        let now_ts = Utc::now().to_rfc3339();
+        data.todos.retain(|t| {
+            if t.completed {
+                if let Some(u) = &t.uuid {
+                    if !u.trim().is_empty() {
+                        now_tombstones.push(Tombstone {
+                            uuid: u.clone(),
+                            deleted_at: now_ts.clone(),
+                        });
+                    }
+                }
+                removed += 1;
+                false
+            } else {
+                true
+            }
+        });
+        data.tombstones.extend(now_tombstones);
 
         if removed > 0 {
             self.save_raw_locked(&data)?;
         }
         Ok(removed)
+    }
+
+    pub fn get_tombstones(&self) -> Result<Vec<Tombstone>, StorageError> {
+        let _guard = self.read_lock();
+        let data = self.load_raw_locked()?;
+        Ok(data.tombstones)
+    }
+
+    pub fn get_sync(&self, since: Option<&str>) -> Result<SyncResponse, StorageError> {
+        let _guard = self.read_lock();
+        let data = self.load_raw_locked()?;
+        let server_timestamp = Utc::now().to_rfc3339();
+
+        match since {
+            None => Ok(SyncResponse {
+                updated_todos: data.todos,
+                deleted_uuids: data.tombstones.into_iter().map(|t| t.uuid).collect(),
+                server_timestamp,
+            }),
+            Some(since_str) => {
+                let updated_todos: Vec<TodoItem> = data
+                    .todos
+                    .into_iter()
+                    .filter(|t| {
+                        let ts = t.updated_at.as_deref().unwrap_or(&t.created_at);
+                        ts > since_str
+                    })
+                    .collect();
+
+                let deleted_uuids: Vec<String> = data
+                    .tombstones
+                    .into_iter()
+                    .filter(|t| t.deleted_at.as_str() > since_str)
+                    .map(|t| t.uuid)
+                    .collect();
+
+                Ok(SyncResponse {
+                    updated_todos,
+                    deleted_uuids,
+                    server_timestamp,
+                })
+            }
+        }
+    }
+
+    pub fn apply_sync(&self, sync: SyncResponse) -> Result<SyncApplyResult, StorageError> {
+        let _guard = self.write_lock();
+        let mut data = self.load_raw_locked()?;
+
+        let mut applied_deletions = 0;
+        let mut applied_updates = 0;
+
+        // 1. Process deletions
+        for del_uuid in &sync.deleted_uuids {
+            let trimmed = del_uuid.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Some(pos) = data
+                .todos
+                .iter()
+                .position(|t| t.uuid.as_deref() == Some(trimmed))
+            {
+                data.todos.remove(pos);
+                applied_deletions += 1;
+            }
+            if !data.tombstones.iter().any(|t| t.uuid == trimmed) {
+                data.tombstones.push(Tombstone {
+                    uuid: trimmed.to_string(),
+                    deleted_at: Utc::now().to_rfc3339(),
+                });
+            }
+        }
+
+        // 2. Process updates with Last-Write-Wins (LWW)
+        for remote in sync.updated_todos {
+            let remote_uuid = match &remote.uuid {
+                Some(u) if !u.trim().is_empty() => u.clone(),
+                _ => continue,
+            };
+
+            // If we have a local tombstone newer than remote.updated_at, skip
+            let remote_ts = remote
+                .updated_at
+                .as_deref()
+                .unwrap_or(&remote.created_at)
+                .to_string();
+            if let Some(tomb) = data.tombstones.iter().find(|t| t.uuid == remote_uuid) {
+                if tomb.deleted_at >= remote_ts {
+                    continue;
+                }
+            }
+
+            if let Some(local) = data
+                .todos
+                .iter_mut()
+                .find(|t| t.uuid.as_deref() == Some(&remote_uuid))
+            {
+                let local_ts = local.updated_at.as_deref().unwrap_or(&local.created_at);
+                if remote_ts.as_str() >= local_ts {
+                    local.title = remote.title;
+                    local.description = remote.description;
+                    local.completed = remote.completed;
+                    local.priority = remote.priority;
+                    local.due_date = remote.due_date;
+                    local.recurrence = remote.recurrence;
+                    local.tags = remote.tags;
+                    local.subtasks = remote.subtasks;
+                    local.estimated_minutes = remote.estimated_minutes;
+                    local.updated_at = remote.updated_at.or(Some(remote_ts));
+                    applied_updates += 1;
+                }
+            } else {
+                let mut new_item = remote;
+                new_item.id = data.next_id;
+                data.next_id += 1;
+                data.todos.push(new_item);
+                applied_updates += 1;
+            }
+        }
+
+        if applied_deletions > 0 || applied_updates > 0 {
+            self.save_raw_locked(&data)?;
+        }
+
+        Ok(SyncApplyResult {
+            applied_updates,
+            applied_deletions,
+        })
     }
 
     pub fn get_stats(&self) -> Result<TodoStats, StorageError> {
