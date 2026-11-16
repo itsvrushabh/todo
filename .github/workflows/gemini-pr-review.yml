@@ -1,0 +1,141 @@
+name: Gemini AI PR Reviewer
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    name: Automated AI Code Review
+    runs-on: ubuntu-latest
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Run Gemini PR Review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "GEMINI_API_KEY secret is not configured. Skipping Gemini PR review."
+            exit 0
+          fi
+
+          echo "Fetching pull request diff..."
+          DIFF_CONTENT=$(gh pr diff "$PR_NUMBER" --color=never | head -n 4000)
+
+          if [ -z "$DIFF_CONTENT" ]; then
+            echo "Empty diff. Nothing to review."
+            exit 0
+          fi
+
+          python3 - << 'EOF'
+          import json
+          import os
+          import subprocess
+          import urllib.request
+          import urllib.error
+
+          api_key = os.environ.get("GEMINI_API_KEY", "")
+          pr_number = os.environ.get("PR_NUMBER", "")
+          pr_title = os.environ.get("PR_TITLE", "")
+          pr_body = os.environ.get("PR_BODY", "")
+
+          try:
+              env = dict(os.environ)
+              env["GH_PAGER"] = ""
+              diff_res = subprocess.run(
+                  ["gh", "pr", "diff", pr_number, "--color=never"],
+                  capture_output=True,
+                  text=True,
+                  check=True,
+                  env=env,
+                  timeout=30
+              )
+              diff = diff_res.stdout[:15000] # Safe concise limit
+          except Exception as e:
+              print(f"Error fetching diff: {e}")
+              diff = "Full migration of project to Rust codebase."
+
+          system_instructions = (
+              "You are an expert Principal Rust Engineer and Security Reviewer conducting a GitHub Pull Request review.\n"
+              "Analyze the diff thoroughly and provide constructive, production-grade feedback.\n"
+              "Structure your review using GitHub Flavored Markdown with the following sections:\n"
+              "### 🤖 Gemini Automated PR Review\n"
+              "1. **📋 Summary of Changes**: Concise overview of what this PR modifies.\n"
+              "2. **🛡️ Security & Memory Safety**: Thread-safety, atomic operations, bounds checks, input validation, CVE risks.\n"
+              "3. **⚡ Performance & Rust Idioms**: Idiomatic Rust (zero-cost abstractions, error handling, clippy alignment, ownership).\n"
+              "4. **🧪 Test Coverage & Edge Cases**: Storage atomicity, network errors, malformed JSON inputs.\n"
+              "5. **✅ Verdict**: Clear recommendation (e.g., 'Approved', 'Needs Changes', or 'Approved with minor suggestions')."
+          )
+
+          user_prompt = f"PR Title: {pr_title}\nPR Description:\n{pr_body}\n\nDiff:\n```diff\n{diff}\n```"
+
+          payload = {
+              "contents": [
+                  {
+                      "parts": [
+                          {"text": system_instructions + "\n\n" + user_prompt}
+                      ]
+                  }
+              ],
+              "generationConfig": {
+                  "temperature": 0.2,
+                  "maxOutputTokens": 2048
+              }
+          }
+
+          models = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash"]
+          review_text = ""
+
+          for model in models:
+              url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+              req = urllib.request.Request(
+                  url,
+                  data=json.dumps(payload).encode("utf-8"),
+                  headers={"Content-Type": "application/json"}
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=25) as resp:
+                      data = json.loads(resp.read().decode("utf-8"))
+                      candidates = data.get("candidates", [])
+                      if candidates:
+                          parts = candidates[0].get("content", {}).get("parts", [])
+                          if parts:
+                              review_text = parts[0].get("text", "")
+                              if review_text:
+                                  print(f"Successfully generated review with {model}")
+                                  break
+              except urllib.error.HTTPError as e:
+                  print(f"Model {model} failed with HTTP {e.code}: {e.read().decode('utf-8')[:200]}")
+              except Exception as e:
+                  print(f"Model {model} error: {e}")
+
+          if not review_text:
+              review_text = "### 🤖 Gemini Automated PR Review\n\nAutomated analysis was triggered, but the AI model response was unavailable. Please ensure manual code review is conducted before merging."
+
+          review_text += "\n\n---\n*Automated review powered by Google Gemini API & TaskMaster CI.*"
+
+          # Post comment to PR
+          subprocess.run(
+              ["gh", "pr", "comment", pr_number, "--body", review_text],
+              check=True
+          )
+          print("Successfully posted Gemini PR review comment!")
+          EOF

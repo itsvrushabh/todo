@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=TaskMaster Todo
+Comment=Modern Cross-Platform Todo & Task Manager
+Exec=todo serve
+Terminal=true
+Type=Application
+Icon=taskmaster
+Categories=Office;Utility;
+Keywords=todo;tasks;notes;planner;
+StartupNotify=true

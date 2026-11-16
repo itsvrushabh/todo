@@ -1,0 +1,24 @@
+[Unit]
+Description=TaskMaster Todo Server Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/lib/taskmaster
+Environment="TODO_STORAGE_PATH=/var/lib/taskmaster/todos.json"
+Environment="RUST_LOG=info"
+ExecStart=/usr/local/bin/todo serve --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5s
+LimitNOFILE=65536
+
+# Security hardening
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

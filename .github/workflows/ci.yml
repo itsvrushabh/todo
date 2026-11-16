@@ -1,8 +1,8 @@
-name: CI
+name: CI - Lint & Test
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, "feat/**", "release/**", "lts/**"]
   pull_request:
     branches: [main, master]
   workflow_dispatch:
@@ -12,30 +12,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Lint & Test
+  lint-and-format:
+    name: Code Formatting & Clippy Linter
     runs-on: ubuntu-latest
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          enable-cache: true
+          components: rustfmt, clippy
 
-      - name: Install Python
-        run: uv python install
-
-      - name: Install dependencies
-        run: uv sync --dev
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
 
       - name: Check code formatting
-        run: uv run ruff format --check
+        run: cargo fmt -- --check
 
-      - name: Run linter
-        run: uv run ruff check
+      - name: Run Clippy linter
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    name: Test Suite
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
 
       - name: Run test suite
-        run: uv run pytest -v
+        run: cargo test --all-targets --all-features --verbose
+
+  audit:
+    name: Security Vulnerability Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run security audit
+        uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true

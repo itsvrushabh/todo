@@ -1,0 +1,145 @@
+use std::sync::Arc;
+use std::thread;
+use tempfile::tempdir;
+use todo::models::{Priority, TodoCreate, TodoUpdate};
+use todo::storage::JsonTodoStorage;
+
+#[test]
+fn test_storage_creation_and_crud() {
+    let dir = tempdir().unwrap();
+    let file_path = dir.path().join("todos.json");
+
+    let storage = JsonTodoStorage::new(&file_path).unwrap();
+
+    // 1. Initial should be empty
+    let initial = storage.get_all(None, None, None).unwrap();
+    assert_eq!(initial.len(), 0);
+
+    // 2. Create item
+    let created = storage
+        .create(TodoCreate {
+            title: "Test Task 1".to_string(),
+            description: Some("Task details".to_string()),
+            priority: Some(Priority::High),
+        })
+        .unwrap();
+    assert_eq!(created.id, 1);
+    assert_eq!(created.title, "Test Task 1");
+    assert_eq!(created.priority, Priority::High);
+    assert!(!created.completed);
+
+    // 3. Get by ID
+    let fetched = storage.get_by_id(1).unwrap().expect("Item should exist");
+    assert_eq!(fetched.id, 1);
+    assert_eq!(fetched.title, "Test Task 1");
+
+    // 4. Update item
+    let updated = storage
+        .update(
+            1,
+            TodoUpdate {
+                title: Some("Updated Task 1".to_string()),
+                description: Some("New desc".to_string()),
+                completed: Some(false),
+                priority: Some(Priority::Low),
+            },
+        )
+        .unwrap()
+        .expect("Should update");
+    assert_eq!(updated.title, "Updated Task 1");
+    assert_eq!(updated.priority, Priority::Low);
+
+    // 5. Toggle item
+    let toggled = storage.toggle(1).unwrap().expect("Should toggle");
+    assert!(toggled.completed);
+
+    // 6. Stats
+    let stats = storage.get_stats().unwrap();
+    assert_eq!(stats.total, 1);
+    assert_eq!(stats.completed, 1);
+    assert_eq!(stats.active, 0);
+    assert_eq!(stats.completion_percentage, 100.0);
+
+    // 7. Delete item
+    let deleted = storage.delete(1).unwrap();
+    assert!(deleted);
+    assert!(storage.get_by_id(1).unwrap().is_none());
+}
+
+#[test]
+fn test_filtering_and_search() {
+    let dir = tempdir().unwrap();
+    let file_path = dir.path().join("todos.json");
+    let storage = JsonTodoStorage::new(&file_path).unwrap();
+
+    storage
+        .create(TodoCreate {
+            title: "Buy groceries".to_string(),
+            description: Some("Milk and bread".to_string()),
+            priority: Some(Priority::High),
+        })
+        .unwrap();
+
+    storage
+        .create(TodoCreate {
+            title: "Write Rust tests".to_string(),
+            description: Some("Integration & unit".to_string()),
+            priority: Some(Priority::Medium),
+        })
+        .unwrap();
+
+    let task3 = storage
+        .create(TodoCreate {
+            title: "Clean desk".to_string(),
+            description: None,
+            priority: Some(Priority::Low),
+        })
+        .unwrap();
+    storage.toggle(task3.id).unwrap();
+
+    // Filter active
+    let active = storage.get_all(Some("active"), None, None).unwrap();
+    assert_eq!(active.len(), 2);
+
+    // Filter completed
+    let completed = storage.get_all(Some("completed"), None, None).unwrap();
+    assert_eq!(completed.len(), 1);
+
+    // Filter priority
+    let high = storage.get_all(None, None, Some("high")).unwrap();
+    assert_eq!(high.len(), 1);
+    assert_eq!(high[0].title, "Buy groceries");
+
+    // Search query
+    let search_results = storage.get_all(None, Some("bread"), None).unwrap();
+    assert_eq!(search_results.len(), 1);
+    assert_eq!(search_results[0].title, "Buy groceries");
+}
+
+#[test]
+fn test_concurrent_access() {
+    let dir = tempdir().unwrap();
+    let file_path = dir.path().join("todos_concurrent.json");
+    let storage = Arc::new(JsonTodoStorage::new(&file_path).unwrap());
+
+    let mut handles = Vec::new();
+    for i in 0..10 {
+        let storage_clone = Arc::clone(&storage);
+        handles.push(thread::spawn(move || {
+            storage_clone
+                .create(TodoCreate {
+                    title: format!("Thread task {i}"),
+                    description: None,
+                    priority: Some(Priority::Medium),
+                })
+                .unwrap();
+        }));
+    }
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    let all = storage.get_all(None, None, None).unwrap();
+    assert_eq!(all.len(), 10);
+}

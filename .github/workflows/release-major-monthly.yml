@@ -1,0 +1,91 @@
+name: Monthly Major Release
+
+on:
+  schedule:
+    # 1st day of every month at 00:00 UTC
+    - cron: '0 0 1 * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (do not push tag or create release)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump-and-tag-major:
+    name: Monthly Major Version Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Calculate and bump next major version
+        id: version_bump
+        run: |
+          python3 - << 'EOF'
+          import re
+          import os
+
+          cargo_file = "Cargo.toml"
+          with open(cargo_file, "r") as f:
+              content = f.read()
+
+          match = re.search(r'^version\s*=\s*"(\d+)\.(\d+)\.(\d+)"', content, re.MULTILINE)
+          if not match:
+              raise ValueError("Could not find version in Cargo.toml")
+
+          major = int(match.group(1))
+
+          new_major = major + 1
+          new_version = f"{new_major}.0.0"
+          new_tag = f"v{new_version}"
+
+          new_content = re.sub(
+              r'^version\s*=\s*"\d+\.\d+\.\d+"',
+              f'version = "{new_version}"',
+              content,
+              count=1,
+              flags=re.MULTILINE
+          )
+
+          with open(cargo_file, "w") as f:
+              f.write(new_content)
+
+          print(f"Bumped major version: {major}.x.x -> {new_version}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+              gh_out.write(f"new_version={new_version}\n")
+              gh_out.write(f"new_tag={new_tag}\n")
+          EOF
+
+      - name: Run verification checks
+        run: |
+          cargo check
+          cargo test --all-targets
+
+      - name: Commit version bump and create git tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          NEW_VERSION: ${{ steps.version_bump.outputs.new_version }}
+          NEW_TAG: ${{ steps.version_bump.outputs.new_tag }}
+        run: |
+          git add Cargo.toml Cargo.lock || true
+          git commit -m "chore(release): bump major version to $NEW_VERSION [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}
+          git tag -a "$NEW_TAG" -m "TaskMaster Major Release $NEW_TAG (Monthly Major)"
+          git push origin "$NEW_TAG"
+          echo "Successfully pushed major tag $NEW_TAG"

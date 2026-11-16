@@ -1,0 +1,63 @@
+name: Yearly LTS Release
+
+on:
+  schedule:
+    # January 1st of every year at 00:00 UTC
+    - cron: '0 0 1 1 *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (do not push tag or create branch)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  create-lts-release:
+    name: Yearly Long-Term Support (LTS) Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Calculate LTS version and branch name
+        id: lts_info
+        run: |
+          YEAR=$(date +%Y)
+          VERSION=$(grep -m1 '^version' Cargo.toml | cut -d '"' -f2)
+          LTS_BRANCH="lts-${YEAR}"
+          LTS_TAG="v${VERSION}-lts-${YEAR}"
+          echo "year=$YEAR" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "lts_branch=$LTS_BRANCH" >> $GITHUB_OUTPUT
+          echo "lts_tag=$LTS_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create LTS Branch and Tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          LTS_BRANCH: ${{ steps.lts_info.outputs.lts_branch }}
+          LTS_TAG: ${{ steps.lts_info.outputs.lts_tag }}
+          YEAR: ${{ steps.lts_info.outputs.year }}
+          VERSION: ${{ steps.lts_info.outputs.version }}
+        run: |
+          echo "Creating branch $LTS_BRANCH from HEAD..."
+          git checkout -b "$LTS_BRANCH"
+          git push origin "$LTS_BRANCH"
+
+          echo "Creating LTS tag $LTS_TAG..."
+          git tag -a "$LTS_TAG" -m "TaskMaster $YEAR Long-Term Support (LTS) Release - $LTS_TAG"
+          git push origin "$LTS_TAG"
+
+          echo "LTS Release $LTS_TAG created successfully."

@@ -79,3 +79,8 @@ todos.json
 .*.tmp
 *.corrupt.bak
 *.log
+
+# Rust build artifacts
+/target/
+**/*.rs.bk
+*.pdb

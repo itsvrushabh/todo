@@ -1,0 +1,23 @@
+name: PR Issue Link Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  verify-linked-issue:
+    name: Verify Linked Issue
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for linked issue in PR body
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if echo "$PR_BODY" | grep -Eiq "(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved) #[0-9]+"; then
+            echo "✅ PR links to a valid issue reference!"
+            exit 0
+          else
+            echo "⚠️ Warning: No linked issue found in the PR description."
+            echo "Please link an issue using keywords such as 'Fixes #<number>' or 'Closes #<number>'."
+            exit 1
+          fi

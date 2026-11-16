@@ -2,6 +2,180 @@
  * TaskMaster - Frontend Application Logic
  */
 
+// GitHub Pages & Static Demo Mode Fallback
+(function initStaticDemoMode() {
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.hostname.endsWith('github.io') || window.location.protocol === 'file:')
+  ) {
+    const STORAGE_KEY = 'taskmaster_demo_todos';
+    function getStored() {
+      try {
+        const data = localStorage.getItem(STORAGE_KEY);
+        return data ? JSON.parse(data) : {
+          next_id: 3,
+          todos: [
+            {
+              id: 1,
+              title: 'Welcome to TaskMaster Rust PWA!',
+              description: 'This interactive demo is running directly in your browser on GitHub Pages.',
+              priority: 'high',
+              completed: false,
+              created_at: new Date().toISOString(),
+              updated_at: null
+            },
+            {
+              id: 2,
+              title: 'Try toggling, filtering, and adding new tasks',
+              description: 'Everything is persisted locally using modern web standards.',
+              priority: 'medium',
+              completed: true,
+              created_at: new Date().toISOString(),
+              updated_at: null
+            }
+          ]
+        };
+      } catch (e) {
+        return { next_id: 1, todos: [] };
+      }
+    }
+
+    function saveStored(data) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch (e) {}
+    }
+
+    const originalFetch = window.fetch;
+    window.fetch = async function(url, options = {}) {
+      const urlStr = typeof url === 'string' ? url : (url.url || '');
+      if (!urlStr.startsWith('/api/')) {
+        return originalFetch(url, options);
+      }
+
+      const method = (options.method || 'GET').toUpperCase();
+      const data = getStored();
+
+      if (urlStr === '/api/health') {
+        return new Response(JSON.stringify({ status: 'ok', mode: 'demo' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (urlStr.startsWith('/api/todos') && method === 'GET') {
+        const u = new URL(urlStr, window.location.origin);
+        let items = [...data.todos];
+        const status = u.searchParams.get('status');
+        const search = u.searchParams.get('search');
+        const priority = u.searchParams.get('priority');
+
+        if (status === 'active') items = items.filter(t => !t.completed);
+        if (status === 'completed') items = items.filter(t => t.completed);
+        if (priority) items = items.filter(t => t.priority === priority);
+        if (search) {
+          const q = search.toLowerCase();
+          items = items.filter(t => t.title.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q)));
+        }
+
+        return new Response(JSON.stringify(items), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (urlStr === '/api/todos' && method === 'POST') {
+        const body = JSON.parse(options.body || '{}');
+        const newItem = {
+          id: data.next_id++,
+          title: body.title,
+          description: body.description || '',
+          priority: body.priority || 'medium',
+          completed: false,
+          created_at: new Date().toISOString(),
+          updated_at: null
+        };
+        data.todos.push(newItem);
+        saveStored(data);
+        return new Response(JSON.stringify(newItem), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const toggleMatch = urlStr.match(/\/api\/todos\/(\d+)\/toggle/);
+      if (toggleMatch && method === 'PATCH') {
+        const id = parseInt(toggleMatch[1], 10);
+        const item = data.todos.find(t => t.id === id);
+        if (item) {
+          item.completed = !item.completed;
+          item.updated_at = new Date().toISOString();
+          saveStored(data);
+          return new Response(JSON.stringify(item), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return new Response(JSON.stringify({ detail: 'Not found' }), { status: 404 });
+      }
+
+      const idMatch = urlStr.match(/\/api\/todos\/(\d+)$/);
+      if (idMatch && method === 'DELETE') {
+        const id = parseInt(idMatch[1], 10);
+        data.todos = data.todos.filter(t => t.id !== id);
+        saveStored(data);
+        return new Response(JSON.stringify({ success: true, message: `Todo #${id} deleted` }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (idMatch && method === 'PUT') {
+        const id = parseInt(idMatch[1], 10);
+        const item = data.todos.find(t => t.id === id);
+        if (item) {
+          const body = JSON.parse(options.body || '{}');
+          if (body.title) item.title = body.title;
+          if (body.description !== undefined) item.description = body.description;
+          if (body.priority) item.priority = body.priority;
+          if (body.completed !== undefined) item.completed = body.completed;
+          item.updated_at = new Date().toISOString();
+          saveStored(data);
+          return new Response(JSON.stringify(item), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return new Response(JSON.stringify({ detail: 'Not found' }), { status: 404 });
+      }
+
+      if (urlStr === '/api/todos-completed/clear' && method === 'DELETE') {
+        const orig = data.todos.length;
+        data.todos = data.todos.filter(t => !t.completed);
+        const cleared = orig - data.todos.length;
+        saveStored(data);
+        return new Response(JSON.stringify({ success: true, cleared_count: cleared }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (urlStr === '/api/stats' && method === 'GET') {
+        const total = data.todos.length;
+        const completed = data.todos.filter(t => t.completed).length;
+        const active = total - completed;
+        const completion_percentage = total > 0 ? (completed / total) * 100 : 0;
+        return new Response(JSON.stringify({ total, completed, active, completion_percentage }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return originalFetch(url, options);
+    };
+  }
+})();
+
 document.addEventListener('DOMContentLoaded', () => {
   // State
   let currentFilter = 'all'; // 'all' | 'active' | 'completed'

@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: taskmaster-todo
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: TODO_STORAGE_PATH
+        value: /data/todos.json
+      - key: PORT
+        value: 8000
+    disk:
+      name: todo-data
+      mountPath: /data
+      sizeGB: 1
+    healthCheckPath: /api/health
