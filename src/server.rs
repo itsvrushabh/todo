@@ -25,6 +25,7 @@ pub struct TodoQueryParams {
     pub status: Option<String>,
     pub search: Option<String>,
     pub priority: Option<String>,
+    pub tag: Option<String>,
 }
 
 pub struct ServerConfig {
@@ -43,6 +44,10 @@ pub fn create_router(storage: Arc<JsonTodoStorage>) -> Router {
             get(get_todo).put(update_todo).delete(delete_todo),
         )
         .route("/api/todos/{id}/toggle", patch(toggle_todo))
+        .route(
+            "/api/todos/{id}/subtasks/{subtask_id}/toggle",
+            patch(toggle_subtask),
+        )
         .route("/api/todos-completed/clear", delete(clear_completed))
         .route("/api/stats", get(get_stats))
         // Web & PWA routes
@@ -70,6 +75,7 @@ async fn get_todos(
             params.status.as_deref(),
             params.search.as_deref(),
             params.priority.as_deref(),
+            params.tag.as_deref(),
         )
         .map_err(|e| {
             (
@@ -145,6 +151,23 @@ async fn toggle_todo(
         Ok(None) => Err((
             StatusCode::NOT_FOUND,
             Json(json!({ "detail": format!("Todo #{id} not found") })),
+        )),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": e.to_string() })),
+        )),
+    }
+}
+
+async fn toggle_subtask(
+    State(storage): State<Arc<JsonTodoStorage>>,
+    Path((id, subtask_id)): Path<(i64, String)>,
+) -> Result<Json<TodoItem>, (StatusCode, Json<serde_json::Value>)> {
+    match storage.toggle_subtask(id, &subtask_id) {
+        Ok(Some(item)) => Ok(Json(item)),
+        Ok(None) => Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "detail": format!("Subtask '{subtask_id}' on Todo #{id} not found") })),
         )),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,

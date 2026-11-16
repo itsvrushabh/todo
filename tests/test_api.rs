@@ -52,6 +52,8 @@ async fn test_crud_endpoints() {
         due_date: Some("2026-11-25".to_string()),
         recurrence: None,
         uuid: None,
+        tags: Vec::new(),
+        subtasks: Vec::new(),
     };
 
     let res = client
@@ -183,6 +185,8 @@ async fn test_recurring_task_api() {
         due_date: Some("2026-01-01".to_string()),
         recurrence: Some(todo::models::RecurrencePattern::Daily),
         uuid: None,
+        tags: Vec::new(),
+        subtasks: Vec::new(),
     };
 
     let res = client
@@ -212,4 +216,70 @@ async fn test_recurring_task_api() {
         .format("%Y-%m-%d")
         .to_string();
     assert_eq!(toggled.due_date, Some(expected));
+}
+
+#[tokio::test]
+async fn test_tag_filtering_and_subtasks_api() {
+    let (base_url, _, _dir) = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    // Create item with subtasks and tags
+    let create_req = serde_json::json!({
+        "title": "Build UI components #dev #frontend",
+        "description": "Design button & modal",
+        "priority": "high",
+        "tags": ["custom-tag"],
+        "subtasks": [
+            { "id": "sub-1", "title": "Create Button", "completed": false },
+            { "id": "sub-2", "title": "Create Modal", "completed": false }
+        ]
+    });
+
+    let res = client
+        .post(format!("{base_url}/api/todos"))
+        .json(&create_req)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let created: TodoItem = res.json().await.unwrap();
+    assert_eq!(created.subtasks.len(), 2);
+    // Auto tags ("dev", "frontend") + explicit tags ("custom-tag")
+    assert!(created.tags.contains(&"dev".to_string()));
+    assert!(created.tags.contains(&"frontend".to_string()));
+    assert!(created.tags.contains(&"custom-tag".to_string()));
+
+    // Filter by tag
+    let res = client
+        .get(format!("{base_url}/api/todos?tag=dev"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let list: Vec<TodoItem> = res.json().await.unwrap();
+    assert_eq!(list.len(), 1);
+
+    let res = client
+        .get(format!("{base_url}/api/todos?tag=nonexistent"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let empty_list: Vec<TodoItem> = res.json().await.unwrap();
+    assert_eq!(empty_list.len(), 0);
+
+    // Toggle subtask
+    let subtask_id = &created.subtasks[0].id;
+    let res = client
+        .patch(format!(
+            "{base_url}/api/todos/{}/subtasks/{subtask_id}/toggle",
+            created.id
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let updated: TodoItem = res.json().await.unwrap();
+    assert!(updated.subtasks[0].completed);
+    assert!(!updated.subtasks[1].completed);
 }

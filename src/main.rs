@@ -41,12 +41,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             status,
             search,
             priority,
+            tag,
         }) => {
             cli::list_todos(
                 storage,
                 status.as_deref(),
                 search.as_deref(),
                 priority.as_deref(),
+                tag.as_deref(),
             )?;
         }
         Some(Commands::Add {
@@ -55,16 +57,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             priority,
             due,
             repeat,
+            tags,
+            subtasks,
         }) => {
             let recurrence = repeat
                 .as_deref()
                 .map(|r| r.parse::<todo::models::RecurrencePattern>())
                 .transpose()
                 .map_err(|e| format!("Invalid recurrence: {e}"))?;
-            cli::add_todo(storage, title, desc, priority, due, recurrence)?;
+            cli::add_todo(
+                storage, title, desc, priority, due, recurrence, tags, subtasks,
+            )?;
         }
         Some(Commands::Done { id }) => {
             cli::toggle_todo(storage, id)?;
+        }
+        Some(Commands::SubtaskDone { id, subtask_id }) => {
+            match storage.toggle_subtask(id, &subtask_id)? {
+                Some(_) => println!("🔄 Subtask '{subtask_id}' on task #{id} toggled"),
+                None => eprintln!("❌ Error: Subtask '{subtask_id}' on task #{id} not found"),
+            }
         }
         Some(Commands::Rm { id }) => {
             cli::delete_todo(storage, id)?;

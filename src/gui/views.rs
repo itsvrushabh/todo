@@ -9,6 +9,8 @@ pub struct ViewAction {
     pub edit_id: Option<i64>,
     pub priority_change: Option<(i64, Priority)>,
     pub next_spotlight_idx: Option<usize>,
+    pub toggle_subtask: Option<(i64, String)>,
+    pub filter_tag: Option<String>,
 }
 
 pub fn render_desktop_planning_banner(app: &mut TodoGuiApp, ui: &mut egui::Ui) {
@@ -340,6 +342,31 @@ pub fn render_desktop_board(
                                     .color(egui::Color32::from_rgb(180, 190, 254)),
                             );
 
+                            if !todo.tags.is_empty() {
+                                ui.horizontal_wrapped(|ui| {
+                                    for tag in &todo.tags {
+                                        if ui
+                                            .link(
+                                                egui::RichText::new(format!("#{tag}"))
+                                                    .size(10.0)
+                                                    .color(egui::Color32::from_rgb(137, 180, 250)),
+                                            )
+                                            .clicked()
+                                        {
+                                            action.filter_tag = Some(tag.clone());
+                                        }
+                                    }
+                                });
+                            }
+
+                            if let Some((done, total)) = todo.subtask_progress() {
+                                ui.label(
+                                    egui::RichText::new(format!("☑️ {done}/{total}"))
+                                        .size(10.0)
+                                        .color(egui::Color32::from_rgb(166, 227, 161)),
+                                );
+                            }
+
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
                                 if !is_done_col {
@@ -535,6 +562,33 @@ pub fn render_mobile_focus_view(app: &TodoGuiApp, ui: &mut egui::Ui, action: &mu
                                         .size(11.0)
                                         .color(egui::Color32::from_rgb(180, 190, 254)),
                                 );
+
+                                if !todo.tags.is_empty() {
+                                    ui.horizontal_wrapped(|ui| {
+                                        for tag in &todo.tags {
+                                            if ui
+                                                .link(
+                                                    egui::RichText::new(format!("#{tag}"))
+                                                        .size(10.5)
+                                                        .color(egui::Color32::from_rgb(
+                                                            137, 180, 250,
+                                                        )),
+                                                )
+                                                .clicked()
+                                            {
+                                                action.filter_tag = Some(tag.clone());
+                                            }
+                                        }
+                                    });
+                                }
+
+                                if let Some((done, total)) = todo.subtask_progress() {
+                                    ui.label(
+                                        egui::RichText::new(format!("☑️ Subtasks: {done}/{total}"))
+                                            .size(11.0)
+                                            .color(egui::Color32::from_rgb(166, 227, 161)),
+                                    );
+                                }
                             });
 
                             // Right Touch Action Buttons
@@ -849,6 +903,33 @@ pub fn render_standard_list_view(
                                         .size(11.0)
                                         .color(egui::Color32::from_rgb(180, 190, 254)),
                                 );
+
+                                if !todo.tags.is_empty() {
+                                    ui.horizontal_wrapped(|ui| {
+                                        for tag in &todo.tags {
+                                            if ui
+                                                .link(
+                                                    egui::RichText::new(format!("#{tag}"))
+                                                        .size(10.5)
+                                                        .color(egui::Color32::from_rgb(
+                                                            137, 180, 250,
+                                                        )),
+                                                )
+                                                .clicked()
+                                            {
+                                                action.filter_tag = Some(tag.clone());
+                                            }
+                                        }
+                                    });
+                                }
+
+                                if let Some((done, total)) = todo.subtask_progress() {
+                                    ui.label(
+                                        egui::RichText::new(format!("☑️ Subtasks: {done}/{total}"))
+                                            .size(11.0)
+                                            .color(egui::Color32::from_rgb(166, 227, 161)),
+                                    );
+                                }
                             });
 
                             // Action Buttons (Right-aligned)

@@ -105,6 +105,24 @@ impl FromStr for RecurrencePattern {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Subtask {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub completed: bool,
+}
+
+impl Subtask {
+    pub fn new(title: impl Into<String>) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            title: title.into(),
+            completed: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TodoItem {
     #[serde(default)]
@@ -127,6 +145,10 @@ pub struct TodoItem {
     pub recurrence: Option<RecurrencePattern>,
     #[serde(default)]
     pub estimated_minutes: Option<u32>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub subtasks: Vec<Subtask>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -162,6 +184,14 @@ impl TimeBudgetFilter {
 impl TodoItem {
     pub fn new(id: i64, title: String, description: Option<String>, priority: Priority) -> Self {
         let now = Utc::now().to_rfc3339();
+        let mut tags = Self::extract_tags(&title);
+        if let Some(ref desc) = description {
+            for t in Self::extract_tags(desc) {
+                if !tags.contains(&t) {
+                    tags.push(t);
+                }
+            }
+        }
         Self {
             id,
             uuid: Some(uuid::Uuid::new_v4().to_string()),
@@ -174,7 +204,43 @@ impl TodoItem {
             due_date: None,
             recurrence: None,
             estimated_minutes: None,
+            tags,
+            subtasks: Vec::new(),
         }
+    }
+
+    pub fn extract_tags(text: &str) -> Vec<String> {
+        let mut tags = Vec::new();
+        for word in text.split_whitespace() {
+            let clean = word
+                .trim_matches(|c: char| !c.is_alphanumeric() && c != '#' && c != '-' && c != '_');
+            if clean.starts_with('#') && clean.len() > 1 {
+                let tag = clean.trim_start_matches('#').to_lowercase();
+                if !tag.is_empty() && !tags.contains(&tag) {
+                    tags.push(tag);
+                }
+            }
+        }
+        tags
+    }
+
+    pub fn subtask_progress(&self) -> Option<(usize, usize)> {
+        if self.subtasks.is_empty() {
+            None
+        } else {
+            let completed = self.subtasks.iter().filter(|s| s.completed).count();
+            Some((completed, self.subtasks.len()))
+        }
+    }
+
+    pub fn with_tags(mut self, tags: Vec<String>) -> Self {
+        self.tags = tags;
+        self
+    }
+
+    pub fn with_subtasks(mut self, subtasks: Vec<Subtask>) -> Self {
+        self.subtasks = subtasks;
+        self
     }
 
     pub fn with_uuid(mut self, uuid: Option<String>) -> Self {
@@ -322,6 +388,10 @@ pub struct TodoCreate {
     pub recurrence: Option<RecurrencePattern>,
     #[serde(default)]
     pub uuid: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub subtasks: Vec<Subtask>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -335,6 +405,10 @@ pub struct TodoUpdate {
     pub recurrence: Option<RecurrencePattern>,
     #[serde(default)]
     pub uuid: Option<String>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub subtasks: Option<Vec<Subtask>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -344,6 +418,7 @@ pub enum PendingMutation {
     Update { id: i64, update: TodoUpdate },
     Delete { id: i64 },
     Toggle { id: i64 },
+    ToggleSubtask { id: i64, subtask_id: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -486,6 +561,34 @@ mod tests {
         assert_eq!(item.recurrence, None);
         assert_eq!(item.priority, Priority::Medium);
         assert_eq!(item.uuid, None);
+        assert!(item.tags.is_empty());
+        assert!(item.subtasks.is_empty());
+    }
+
+    #[test]
+    fn test_tag_extraction_and_subtask_progress() {
+        let task = TodoItem::new(
+            1,
+            "Implement feature #auth #backend".to_string(),
+            Some("Check #security and test".to_string()),
+            Priority::High,
+        );
+        assert_eq!(task.tags, vec!["auth", "backend", "security"]);
+        assert_eq!(task.subtask_progress(), None);
+
+        let with_subs = task.with_subtasks(vec![
+            Subtask {
+                id: "1".into(),
+                title: "Write unit tests".into(),
+                completed: true,
+            },
+            Subtask {
+                id: "2".into(),
+                title: "Update documentation".into(),
+                completed: false,
+            },
+        ]);
+        assert_eq!(with_subs.subtask_progress(), Some((1, 2)));
     }
 
     #[test]
@@ -508,6 +611,8 @@ mod tests {
             due_date: Some("2026-11-20".to_string()),
             recurrence: Some(RecurrencePattern::Daily),
             uuid: Some("client-uuid-456".to_string()),
+            tags: vec!["offline".to_string()],
+            subtasks: vec![Subtask::new("sub1")],
         });
         let json = serde_json::to_string(&create_mut).unwrap();
         let decoded: PendingMutation = serde_json::from_str(&json).unwrap();
@@ -517,6 +622,14 @@ mod tests {
         let toggle_json = serde_json::to_string(&toggle_mut).unwrap();
         let toggle_decoded: PendingMutation = serde_json::from_str(&toggle_json).unwrap();
         assert_eq!(toggle_mut, toggle_decoded);
+
+        let subtask_mut = PendingMutation::ToggleSubtask {
+            id: 42,
+            subtask_id: "sub-uuid-1".to_string(),
+        };
+        let subtask_json = serde_json::to_string(&subtask_mut).unwrap();
+        let subtask_decoded: PendingMutation = serde_json::from_str(&subtask_json).unwrap();
+        assert_eq!(subtask_mut, subtask_decoded);
 
         let del_mut = PendingMutation::Delete { id: 7 };
         let del_json = serde_json::to_string(&del_mut).unwrap();
@@ -533,6 +646,8 @@ mod tests {
                 due_date: None,
                 recurrence: None,
                 uuid: Some("client-uuid-789".to_string()),
+                tags: Some(vec!["updated".to_string()]),
+                subtasks: None,
             },
         };
         let update_json = serde_json::to_string(&update_mut).unwrap();

@@ -36,6 +36,7 @@ pub struct TodoGuiApp {
     pub desktop_board_view: bool,
     pub mobile_compact_meta: bool,
     pub time_budget: TimeBudgetFilter,
+    pub selected_tag: Option<String>,
     pub planning_scratchpad: String,
     pub show_planning_scratchpad: bool,
     pub show_export_dialog: bool,
@@ -76,6 +77,7 @@ impl TodoGuiApp {
             desktop_board_view: true,
             mobile_compact_meta: true,
             time_budget: TimeBudgetFilter::default(),
+            selected_tag: None,
             planning_scratchpad: String::new(),
             show_planning_scratchpad: true,
             show_export_dialog: false,
@@ -288,6 +290,8 @@ impl TodoGuiApp {
                         due_date: item.due_date.clone(),
                         recurrence: item.recurrence,
                         uuid: item.uuid.clone(),
+                        tags: item.tags.clone(),
+                        subtasks: item.subtasks.clone(),
                     },
                 ));
         }
@@ -366,6 +370,11 @@ impl TodoGuiApp {
                     todo.due_date = due.clone();
                     todo.recurrence = self.edit_recurrence;
                     todo.updated_at = Some(Utc::now().to_rfc3339());
+                    for t in TodoItem::extract_tags(trimmed) {
+                        if !todo.tags.contains(&t) {
+                            todo.tags.push(t);
+                        }
+                    }
 
                     if !self.server_url.trim().is_empty() {
                         self.pending_mutations
@@ -379,6 +388,8 @@ impl TodoGuiApp {
                                     due_date: due,
                                     recurrence: self.edit_recurrence,
                                     uuid: todo.uuid.clone(),
+                                    tags: Some(todo.tags.clone()),
+                                    subtasks: Some(todo.subtasks.clone()),
                                 },
                             });
                     }
@@ -562,6 +573,38 @@ impl TodoGuiApp {
         });
     }
 
+    pub fn all_tags(&self) -> Vec<String> {
+        let mut tags = Vec::new();
+        for todo in &self.todos {
+            for tag in &todo.tags {
+                if !tags.contains(tag) {
+                    tags.push(tag.clone());
+                }
+            }
+        }
+        tags.sort();
+        tags
+    }
+
+    pub fn toggle_subtask(&mut self, todo_id: i64, subtask_id: &str) {
+        if let Some(todo) = self.todos.iter_mut().find(|t| t.id == todo_id) {
+            if let Some(sub) = todo.subtasks.iter_mut().find(|s| s.id == subtask_id) {
+                sub.completed = !sub.completed;
+                todo.updated_at = Some(Utc::now().to_rfc3339());
+
+                if !self.server_url.trim().is_empty() {
+                    self.pending_mutations
+                        .push(crate::models::PendingMutation::ToggleSubtask {
+                            id: todo_id,
+                            subtask_id: subtask_id.to_string(),
+                        });
+                }
+
+                self.save_todos();
+            }
+        }
+    }
+
     pub fn filtered_todos(&self) -> Vec<&TodoItem> {
         self.todos
             .iter()
@@ -571,6 +614,13 @@ impl TodoGuiApp {
                 FilterStatus::Completed => todo.completed,
             })
             .filter(|todo| self.time_budget.matches(todo.effective_estimated_minutes()))
+            .filter(|todo| {
+                if let Some(ref tag) = self.selected_tag {
+                    todo.tags.iter().any(|t| t.eq_ignore_ascii_case(tag))
+                } else {
+                    true
+                }
+            })
             .filter(|todo| {
                 if self.search_query.trim().is_empty() {
                     true
@@ -582,7 +632,8 @@ impl TodoGuiApp {
                         .as_ref()
                         .map(|d| d.to_lowercase().contains(&q))
                         .unwrap_or(false);
-                    in_title || in_desc
+                    let in_tag = todo.tags.iter().any(|t| t.to_lowercase().contains(&q));
+                    in_title || in_desc || in_tag
                 }
             })
             .collect()
@@ -624,6 +675,8 @@ impl TodoGuiApp {
                     due_date: None,
                     recurrence: None,
                     estimated_minutes: duration,
+                    tags: TodoItem::extract_tags(clean),
+                    subtasks: Vec::new(),
                 };
                 if !self.server_url.trim().is_empty() {
                     self.pending_mutations
@@ -635,6 +688,8 @@ impl TodoGuiApp {
                                 due_date: None,
                                 recurrence: None,
                                 uuid: item.uuid.clone(),
+                                tags: item.tags.clone(),
+                                subtasks: Vec::new(),
                             },
                         ));
                 }
@@ -668,6 +723,8 @@ impl TodoGuiApp {
                             due_date: None,
                             recurrence: None,
                             uuid: todo.uuid.clone(),
+                            tags: None,
+                            subtasks: None,
                         },
                     });
             }
@@ -1080,6 +1137,26 @@ impl eframe::App for TodoGuiApp {
                         if !self.search_query.is_empty() && ui.small_button("✖").clicked() {
                             self.search_query.clear();
                         }
+
+                        let tags = self.all_tags();
+                        if !tags.is_empty() {
+                            ui.separator();
+                            ui.label("🏷️");
+                            let is_all_tags = self.selected_tag.is_none();
+                            if ui.selectable_label(is_all_tags, "All").clicked() {
+                                self.selected_tag = None;
+                            }
+                            for tag in &tags {
+                                let is_sel = self.selected_tag.as_deref() == Some(tag.as_str());
+                                if ui.selectable_label(is_sel, format!("#{tag}")).clicked() {
+                                    if is_sel {
+                                        self.selected_tag = None;
+                                    } else {
+                                        self.selected_tag = Some(tag.clone());
+                                    }
+                                }
+                            }
+                        }
                     });
                 }
             });
@@ -1186,6 +1263,12 @@ impl eframe::App for TodoGuiApp {
                     }
                     if let Some(idx) = action.next_spotlight_idx {
                         self.calm_spotlight_idx = idx;
+                    }
+                    if let Some((id, sub_id)) = action.toggle_subtask {
+                        self.toggle_subtask(id, &sub_id);
+                    }
+                    if let Some(tag) = action.filter_tag {
+                        self.selected_tag = Some(tag);
                     }
                 }
             });
@@ -1374,6 +1457,8 @@ mod tests {
                 estimated_minutes: None,
                 created_at: Utc::now().to_rfc3339(),
                 updated_at: None,
+                tags: Vec::new(),
+                subtasks: Vec::new(),
             },
             TodoItem {
                 id: 2,
@@ -1387,6 +1472,8 @@ mod tests {
                 estimated_minutes: None,
                 created_at: Utc::now().to_rfc3339(),
                 updated_at: None,
+                tags: Vec::new(),
+                subtasks: Vec::new(),
             },
             TodoItem {
                 id: 3,
@@ -1400,6 +1487,8 @@ mod tests {
                 estimated_minutes: None,
                 created_at: Utc::now().to_rfc3339(),
                 updated_at: None,
+                tags: Vec::new(),
+                subtasks: Vec::new(),
             },
             TodoItem {
                 id: 4,
@@ -1413,6 +1502,8 @@ mod tests {
                 estimated_minutes: None,
                 created_at: Utc::now().to_rfc3339(),
                 updated_at: None,
+                tags: Vec::new(),
+                subtasks: Vec::new(),
             },
         ];
 
@@ -1440,6 +1531,8 @@ mod tests {
             estimated_minutes: None,
             created_at: Utc::now().to_rfc3339(),
             updated_at: None,
+            tags: Vec::new(),
+            subtasks: Vec::new(),
         }];
 
         app.update_priority(42, Priority::High);
@@ -1471,6 +1564,8 @@ mod tests {
                 estimated_minutes: None,
                 created_at: Utc::now().to_rfc3339(),
                 updated_at: None,
+                tags: Vec::new(),
+                subtasks: Vec::new(),
             },
             TodoItem {
                 id: 2,
@@ -1484,6 +1579,8 @@ mod tests {
                 estimated_minutes: None,
                 created_at: Utc::now().to_rfc3339(),
                 updated_at: None,
+                tags: Vec::new(),
+                subtasks: Vec::new(),
             },
         ];
 
@@ -1534,6 +1631,8 @@ mod tests {
                 estimated_minutes: None,
                 created_at: Utc::now().to_rfc3339(),
                 updated_at: None,
+                tags: Vec::new(),
+                subtasks: Vec::new(),
             },
             TodoItem {
                 id: 2,
@@ -1547,6 +1646,8 @@ mod tests {
                 estimated_minutes: None,
                 created_at: Utc::now().to_rfc3339(),
                 updated_at: None,
+                tags: Vec::new(),
+                subtasks: Vec::new(),
             },
         ];
 
@@ -1581,5 +1682,63 @@ mod tests {
             reloaded.planning_scratchpad,
             "Session Goal: Finish Stage 3 testing"
         );
+    }
+
+    #[test]
+    fn test_gui_tag_filtering_and_subtasks() {
+        use crate::models::Subtask;
+
+        let mut app = TodoGuiApp::new(None);
+        app.server_url = "http://localhost:3000".to_string();
+        app.todos = vec![
+            TodoItem {
+                id: 1,
+                uuid: None,
+                title: "Frontend work".into(),
+                description: None,
+                completed: false,
+                priority: Priority::Medium,
+                due_date: None,
+                recurrence: None,
+                estimated_minutes: None,
+                created_at: Utc::now().to_rfc3339(),
+                updated_at: None,
+                tags: vec!["gui".to_string(), "rust".to_string()],
+                subtasks: vec![Subtask::new("Button"), Subtask::new("Modal")],
+            },
+            TodoItem {
+                id: 2,
+                uuid: None,
+                title: "Backend work".into(),
+                description: None,
+                completed: false,
+                priority: Priority::High,
+                due_date: None,
+                recurrence: None,
+                estimated_minutes: None,
+                created_at: Utc::now().to_rfc3339(),
+                updated_at: None,
+                tags: vec!["api".to_string(), "rust".to_string()],
+                subtasks: Vec::new(),
+            },
+        ];
+
+        let tags = app.all_tags();
+        assert_eq!(tags, vec!["api", "gui", "rust"]);
+
+        app.selected_tag = Some("gui".to_string());
+        let filtered = app.filtered_todos();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, 1);
+
+        app.selected_tag = Some("rust".to_string());
+        assert_eq!(app.filtered_todos().len(), 2);
+
+        // Subtask toggle
+        assert!(!app.todos[0].subtasks[0].completed);
+        let sub_id = app.todos[0].subtasks[0].id.clone();
+        app.toggle_subtask(1, &sub_id);
+        assert!(app.todos[0].subtasks[0].completed);
+        assert_eq!(app.pending_mutations.len(), 1);
     }
 }

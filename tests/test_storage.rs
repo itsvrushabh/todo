@@ -12,7 +12,7 @@ fn test_storage_creation_and_crud() {
     let storage = JsonTodoStorage::new(&file_path).unwrap();
 
     // 1. Initial should be empty
-    let initial = storage.get_all(None, None, None).unwrap();
+    let initial = storage.get_all(None, None, None, None).unwrap();
     assert_eq!(initial.len(), 0);
 
     // 2. Create item
@@ -24,6 +24,8 @@ fn test_storage_creation_and_crud() {
             due_date: Some("2026-12-31".to_string()),
             recurrence: None,
             uuid: None,
+            tags: Vec::new(),
+            subtasks: Vec::new(),
         })
         .unwrap();
     assert_eq!(created.id, 1);
@@ -51,6 +53,8 @@ fn test_storage_creation_and_crud() {
                 due_date: Some("2027-01-01".to_string()),
                 recurrence: None,
                 uuid: None,
+                tags: None,
+                subtasks: None,
             },
         )
         .unwrap()
@@ -90,6 +94,8 @@ fn test_filtering_and_search() {
             due_date: None,
             recurrence: None,
             uuid: None,
+            tags: vec!["errands".to_string()],
+            subtasks: Vec::new(),
         })
         .unwrap();
 
@@ -101,6 +107,8 @@ fn test_filtering_and_search() {
             due_date: None,
             recurrence: None,
             uuid: None,
+            tags: vec!["dev".to_string(), "rust".to_string()],
+            subtasks: Vec::new(),
         })
         .unwrap();
 
@@ -112,27 +120,36 @@ fn test_filtering_and_search() {
             due_date: None,
             recurrence: None,
             uuid: None,
+            tags: vec!["chores".to_string()],
+            subtasks: Vec::new(),
         })
         .unwrap();
     storage.toggle(task3.id).unwrap();
 
     // Filter active
-    let active = storage.get_all(Some("active"), None, None).unwrap();
+    let active = storage.get_all(Some("active"), None, None, None).unwrap();
     assert_eq!(active.len(), 2);
 
     // Filter completed
-    let completed = storage.get_all(Some("completed"), None, None).unwrap();
+    let completed = storage
+        .get_all(Some("completed"), None, None, None)
+        .unwrap();
     assert_eq!(completed.len(), 1);
 
     // Filter priority
-    let high = storage.get_all(None, None, Some("high")).unwrap();
+    let high = storage.get_all(None, None, Some("high"), None).unwrap();
     assert_eq!(high.len(), 1);
     assert_eq!(high[0].title, "Buy groceries");
 
     // Search query
-    let search_results = storage.get_all(None, Some("bread"), None).unwrap();
+    let search_results = storage.get_all(None, Some("bread"), None, None).unwrap();
     assert_eq!(search_results.len(), 1);
     assert_eq!(search_results[0].title, "Buy groceries");
+
+    // Filter tag
+    let tag_results = storage.get_all(None, None, None, Some("dev")).unwrap();
+    assert_eq!(tag_results.len(), 1);
+    assert_eq!(tag_results[0].title, "Write Rust tests");
 }
 
 #[test]
@@ -153,6 +170,8 @@ fn test_concurrent_access() {
                     due_date: None,
                     recurrence: None,
                     uuid: None,
+                    tags: Vec::new(),
+                    subtasks: Vec::new(),
                 })
                 .unwrap();
         }));
@@ -162,7 +181,7 @@ fn test_concurrent_access() {
         handle.join().unwrap();
     }
 
-    let all = storage.get_all(None, None, None).unwrap();
+    let all = storage.get_all(None, None, None, None).unwrap();
     assert_eq!(all.len(), 10);
 }
 
@@ -180,6 +199,8 @@ fn test_recurring_task_toggle() {
             due_date: Some("2026-01-01".to_string()),
             recurrence: Some(todo::models::RecurrencePattern::Daily),
             uuid: None,
+            tags: Vec::new(),
+            subtasks: Vec::new(),
         })
         .unwrap();
 
@@ -213,6 +234,8 @@ fn test_poisoned_lock_recovery() {
             due_date: None,
             recurrence: None,
             uuid: None,
+            tags: Vec::new(),
+            subtasks: Vec::new(),
         })
         .unwrap();
     assert_eq!(created.id, 1);
@@ -222,7 +245,7 @@ fn test_poisoned_lock_recovery() {
 
     // Verify reads recover from poisoned lock
     let all = storage
-        .get_all(None, None, None)
+        .get_all(None, None, None, None)
         .expect("Read should recover gracefully from poisoned lock");
     assert_eq!(all.len(), 1);
     assert_eq!(all[0].title, "Pre-poison Task");
@@ -236,6 +259,8 @@ fn test_poisoned_lock_recovery() {
             due_date: None,
             recurrence: None,
             uuid: None,
+            tags: Vec::new(),
+            subtasks: Vec::new(),
         })
         .expect("Write should recover gracefully from poisoned lock");
     assert_eq!(second.id, 2);
@@ -257,6 +282,8 @@ fn test_storage_uuid_generation_and_lookup() {
             due_date: None,
             recurrence: None,
             uuid: None,
+            tags: Vec::new(),
+            subtasks: Vec::new(),
         })
         .unwrap();
     assert!(auto.uuid.is_some());
@@ -280,6 +307,8 @@ fn test_storage_uuid_generation_and_lookup() {
             due_date: None,
             recurrence: None,
             uuid: Some(client_uuid.clone()),
+            tags: Vec::new(),
+            subtasks: Vec::new(),
         })
         .unwrap();
     assert_eq!(client_task.uuid.as_deref(), Some(client_uuid.as_str()));
@@ -293,4 +322,38 @@ fn test_storage_uuid_generation_and_lookup() {
     // 3. Lookup non-existent UUID returns None
     let missing = storage.get_by_uuid("non-existent-uuid").unwrap();
     assert!(missing.is_none());
+}
+
+#[test]
+fn test_storage_subtasks_lifecycle() {
+    use todo::models::Subtask;
+
+    let dir = tempdir().unwrap();
+    let file_path = dir.path().join("todos_subtasks.json");
+    let storage = JsonTodoStorage::new(&file_path).unwrap();
+
+    let task = storage
+        .create(TodoCreate {
+            title: "Epic Task".to_string(),
+            description: None,
+            priority: Some(Priority::High),
+            due_date: None,
+            recurrence: None,
+            uuid: None,
+            tags: vec!["epic".to_string()],
+            subtasks: vec![Subtask::new("Sub 1"), Subtask::new("Sub 2")],
+        })
+        .unwrap();
+
+    assert_eq!(task.subtasks.len(), 2);
+    assert_eq!(task.subtask_progress(), Some((0, 2)));
+
+    let sub_id = task.subtasks[0].id.clone();
+    let toggled = storage.toggle_subtask(task.id, &sub_id).unwrap().unwrap();
+    assert!(toggled.subtasks[0].completed);
+    assert_eq!(toggled.subtask_progress(), Some((1, 2)));
+
+    let toggled_back = storage.toggle_subtask(task.id, &sub_id).unwrap().unwrap();
+    assert!(!toggled_back.subtasks[0].completed);
+    assert_eq!(toggled_back.subtask_progress(), Some((0, 2)));
 }
