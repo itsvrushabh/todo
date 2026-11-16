@@ -189,3 +189,45 @@ fn test_recurring_task_toggle() {
         .to_string();
     assert_eq!(toggled.due_date, Some(expected_due));
 }
+
+#[test]
+fn test_poisoned_lock_recovery() {
+    let dir = tempdir().unwrap();
+    let file_path = dir.path().join("todos_poison.json");
+    let storage = JsonTodoStorage::new(&file_path).unwrap();
+
+    // Create an initial task
+    let created = storage
+        .create(TodoCreate {
+            title: "Pre-poison Task".to_string(),
+            description: None,
+            priority: Some(Priority::Medium),
+            due_date: None,
+            recurrence: None,
+        })
+        .unwrap();
+    assert_eq!(created.id, 1);
+
+    // Intentionally poison the RwLock
+    storage.simulate_poison();
+
+    // Verify reads recover from poisoned lock
+    let all = storage
+        .get_all(None, None, None)
+        .expect("Read should recover gracefully from poisoned lock");
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].title, "Pre-poison Task");
+
+    // Verify writes recover from poisoned lock
+    let second = storage
+        .create(TodoCreate {
+            title: "Post-poison Task".to_string(),
+            description: None,
+            priority: Some(Priority::High),
+            due_date: None,
+            recurrence: None,
+        })
+        .expect("Write should recover gracefully from poisoned lock");
+    assert_eq!(second.id, 2);
+    assert_eq!(second.title, "Post-poison Task");
+}

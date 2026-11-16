@@ -60,6 +60,25 @@ pub struct JsonTodoStorage {
 }
 
 impl JsonTodoStorage {
+    fn write_lock(&self) -> std::sync::RwLockWriteGuard<'_, ()> {
+        self.lock
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn read_lock(&self) -> std::sync::RwLockReadGuard<'_, ()> {
+        self.lock
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    pub fn simulate_poison(&self) {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = self.lock.write().unwrap();
+            panic!("Intentional lock poison simulation");
+        }));
+    }
+
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, StorageError> {
         let file_path = path.as_ref().to_path_buf();
         let storage = Self {
@@ -71,7 +90,7 @@ impl JsonTodoStorage {
     }
 
     fn ensure_storage(&self) -> Result<(), StorageError> {
-        let _guard = self.lock.write().unwrap();
+        let _guard = self.write_lock();
         if let Some(parent) = self.file_path.parent() {
             if !parent.as_os_str().is_empty() {
                 fs::create_dir_all(parent)?;
@@ -122,7 +141,7 @@ impl JsonTodoStorage {
         search: Option<&str>,
         priority: Option<&str>,
     ) -> Result<Vec<TodoItem>, StorageError> {
-        let _guard = self.lock.read().unwrap();
+        let _guard = self.read_lock();
         let data = self.load_raw_locked()?;
         let mut items = data.todos;
 
@@ -156,7 +175,7 @@ impl JsonTodoStorage {
     }
 
     pub fn get_by_id(&self, id: i64) -> Result<Option<TodoItem>, StorageError> {
-        let _guard = self.lock.read().unwrap();
+        let _guard = self.read_lock();
         let data = self.load_raw_locked()?;
         Ok(data.todos.into_iter().find(|t| t.id == id))
     }
@@ -169,7 +188,7 @@ impl JsonTodoStorage {
             ));
         }
 
-        let _guard = self.lock.write().unwrap();
+        let _guard = self.write_lock();
         let mut data = self.load_raw_locked()?;
 
         let mut item = TodoItem::new(
@@ -194,7 +213,7 @@ impl JsonTodoStorage {
     }
 
     pub fn update(&self, id: i64, todo_in: TodoUpdate) -> Result<Option<TodoItem>, StorageError> {
-        let _guard = self.lock.write().unwrap();
+        let _guard = self.write_lock();
         let mut data = self.load_raw_locked()?;
 
         if let Some(item) = data.todos.iter_mut().find(|t| t.id == id) {
@@ -247,7 +266,7 @@ impl JsonTodoStorage {
     }
 
     pub fn toggle(&self, id: i64) -> Result<Option<TodoItem>, StorageError> {
-        let _guard = self.lock.write().unwrap();
+        let _guard = self.write_lock();
         let mut data = self.load_raw_locked()?;
 
         if let Some(item) = data.todos.iter_mut().find(|t| t.id == id) {
@@ -272,7 +291,7 @@ impl JsonTodoStorage {
     }
 
     pub fn delete(&self, id: i64) -> Result<bool, StorageError> {
-        let _guard = self.lock.write().unwrap();
+        let _guard = self.write_lock();
         let mut data = self.load_raw_locked()?;
 
         let original_len = data.todos.len();
@@ -287,7 +306,7 @@ impl JsonTodoStorage {
     }
 
     pub fn clear_completed(&self) -> Result<usize, StorageError> {
-        let _guard = self.lock.write().unwrap();
+        let _guard = self.write_lock();
         let mut data = self.load_raw_locked()?;
 
         let original_len = data.todos.len();
@@ -301,7 +320,7 @@ impl JsonTodoStorage {
     }
 
     pub fn get_stats(&self) -> Result<TodoStats, StorageError> {
-        let _guard = self.lock.read().unwrap();
+        let _guard = self.read_lock();
         let data = self.load_raw_locked()?;
 
         let total = data.todos.len();
