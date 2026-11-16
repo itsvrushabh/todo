@@ -1,6 +1,7 @@
 use crate::models::{Priority, TodoItem};
 use chrono::Utc;
 use eframe::egui;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +17,27 @@ pub enum GuiTheme {
     Macchiato,
     Latte,
     HighContrast,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AdaptiveMode {
+    #[default]
+    Auto,
+    DesktopPlanning,
+    MobileFocus,
+    Calm,
+}
+
+impl AdaptiveMode {
+    pub fn display_label(&self) -> &'static str {
+        match self {
+            AdaptiveMode::Auto => "🤖 Auto Layout",
+            AdaptiveMode::DesktopPlanning => "🖥️ Desktop Planning",
+            AdaptiveMode::MobileFocus => "📱 Mobile Focus",
+            AdaptiveMode::Calm => "🌿 Calm Mode",
+        }
+    }
 }
 
 impl GuiTheme {
@@ -121,6 +143,7 @@ pub struct TodoGuiApp {
     pub edit_recurrence: Option<crate::models::RecurrencePattern>,
     pub storage_path: Option<PathBuf>,
     pub theme: GuiTheme,
+    pub adaptive_mode: AdaptiveMode,
     pub show_export_dialog: bool,
     pub export_markdown: bool,
     pub show_import_dialog: bool,
@@ -209,6 +232,7 @@ impl TodoGuiApp {
             edit_recurrence: None,
             storage_path,
             theme: GuiTheme::Macchiato,
+            adaptive_mode: AdaptiveMode::default(),
             show_export_dialog: false,
             export_markdown: false,
             show_import_dialog: false,
@@ -335,6 +359,19 @@ impl TodoGuiApp {
                     }
                 }
             }
+        }
+    }
+
+    pub fn effective_mode(&self, screen_width: f32) -> AdaptiveMode {
+        match self.adaptive_mode {
+            AdaptiveMode::Auto => {
+                if screen_width < 650.0 {
+                    AdaptiveMode::MobileFocus
+                } else {
+                    AdaptiveMode::DesktopPlanning
+                }
+            }
+            mode => mode,
         }
     }
 
@@ -926,6 +963,31 @@ impl eframe::App for TodoGuiApp {
                             }
                         }
 
+                        egui::ComboBox::from_id_salt("adaptive_mode_selector")
+                            .selected_text(self.adaptive_mode.display_label())
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.adaptive_mode,
+                                    AdaptiveMode::Auto,
+                                    "🤖 Auto Layout",
+                                );
+                                ui.selectable_value(
+                                    &mut self.adaptive_mode,
+                                    AdaptiveMode::DesktopPlanning,
+                                    "🖥️ Desktop Planning",
+                                );
+                                ui.selectable_value(
+                                    &mut self.adaptive_mode,
+                                    AdaptiveMode::MobileFocus,
+                                    "📱 Mobile Focus",
+                                );
+                                ui.selectable_value(
+                                    &mut self.adaptive_mode,
+                                    AdaptiveMode::Calm,
+                                    "🌿 Calm Mode",
+                                );
+                            });
+
                         egui::ComboBox::from_id_salt("theme_selector")
                             .selected_text(match self.theme {
                                 GuiTheme::Macchiato => "🎨 Dark",
@@ -1292,6 +1354,121 @@ impl eframe::App for TodoGuiApp {
                             });
                         });
                     ui.add_space(14.0);
+                }
+
+                // Adaptive Context Header
+                let current_mode = self.effective_mode(ctx.screen_rect().width());
+                match current_mode {
+                    AdaptiveMode::DesktopPlanning => {
+                        egui::Frame::new()
+                            .fill(self.theme.top_panel_bg())
+                            .corner_radius(egui::CornerRadius::same(6))
+                            .inner_margin(egui::Margin::symmetric(12, 6))
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("🖥️ Planning Overview")
+                                            .strong()
+                                            .size(12.0)
+                                            .color(egui::Color32::from_rgb(137, 180, 250)),
+                                    );
+                                    ui.separator();
+                                    let high_count = self
+                                        .todos
+                                        .iter()
+                                        .filter(|t| !t.completed && t.priority == Priority::High)
+                                        .count();
+                                    let med_count = self
+                                        .todos
+                                        .iter()
+                                        .filter(|t| !t.completed && t.priority == Priority::Medium)
+                                        .count();
+                                    let low_count = self
+                                        .todos
+                                        .iter()
+                                        .filter(|t| !t.completed && t.priority == Priority::Low)
+                                        .count();
+                                    let overdue_count = self
+                                        .todos
+                                        .iter()
+                                        .filter(|t| {
+                                            !t.completed
+                                                && t.due_status()
+                                                    == Some(crate::models::DueStatus::Overdue)
+                                        })
+                                        .count();
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "Workstreams: [🔴 High: {high_count}] [🟡 Med: {med_count}] [🟢 Low: {low_count}]"
+                                        ))
+                                        .size(11.0)
+                                        .color(egui::Color32::from_rgb(166, 173, 200)),
+                                    );
+                                    if overdue_count > 0 {
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "[⚠️ Overdue: {overdue_count}]"
+                                            ))
+                                            .color(egui::Color32::from_rgb(243, 139, 168))
+                                            .size(11.0)
+                                            .strong(),
+                                        );
+                                    }
+                                });
+                            });
+                        ui.add_space(8.0);
+                    }
+                    AdaptiveMode::MobileFocus => {
+                        egui::Frame::new()
+                            .fill(self.theme.top_panel_bg())
+                            .corner_radius(egui::CornerRadius::same(6))
+                            .inner_margin(egui::Margin::symmetric(12, 6))
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("📱 Mobile Focus")
+                                            .strong()
+                                            .size(12.0)
+                                            .color(egui::Color32::from_rgb(166, 227, 161)),
+                                    );
+                                    ui.separator();
+                                    ui.label(
+                                        egui::RichText::new(
+                                            "Touch-optimized view • Active priorities surfaced",
+                                        )
+                                        .size(11.0)
+                                        .color(egui::Color32::from_rgb(166, 173, 200)),
+                                    );
+                                });
+                            });
+                        ui.add_space(8.0);
+                    }
+                    AdaptiveMode::Calm => {
+                        egui::Frame::new()
+                            .fill(self.theme.top_panel_bg())
+                            .corner_radius(egui::CornerRadius::same(6))
+                            .inner_margin(egui::Margin::symmetric(12, 6))
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("🌿 Calm Focus")
+                                            .strong()
+                                            .size(12.0)
+                                            .color(egui::Color32::from_rgb(148, 226, 213)),
+                                    );
+                                    ui.separator();
+                                    ui.label(
+                                        egui::RichText::new(
+                                            "Reduced visual stimulation • One task at a time",
+                                        )
+                                        .size(11.0)
+                                        .color(egui::Color32::from_rgb(166, 173, 200)),
+                                    );
+                                });
+                            });
+                        ui.add_space(8.0);
+                    }
+                    AdaptiveMode::Auto => {}
                 }
 
                 // Task List
@@ -1828,5 +2005,25 @@ mod tests {
         // 5. Verify persistence in file queue
         let reloaded_app = TodoGuiApp::new(Some(file_path));
         assert_eq!(reloaded_app.pending_mutations.len(), 4);
+    }
+
+    #[test]
+    fn test_adaptive_mode_resolution() {
+        let mut app = TodoGuiApp::new(None);
+        assert_eq!(app.adaptive_mode, AdaptiveMode::Auto);
+
+        // Auto mode responsive breakpoint (< 650 is MobileFocus)
+        assert_eq!(app.effective_mode(500.0), AdaptiveMode::MobileFocus);
+        assert_eq!(app.effective_mode(1200.0), AdaptiveMode::DesktopPlanning);
+
+        // Explicit overrides
+        app.adaptive_mode = AdaptiveMode::MobileFocus;
+        assert_eq!(app.effective_mode(1400.0), AdaptiveMode::MobileFocus);
+
+        app.adaptive_mode = AdaptiveMode::Calm;
+        assert_eq!(app.effective_mode(400.0), AdaptiveMode::Calm);
+
+        app.adaptive_mode = AdaptiveMode::DesktopPlanning;
+        assert_eq!(app.effective_mode(400.0), AdaptiveMode::DesktopPlanning);
     }
 }
