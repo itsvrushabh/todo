@@ -49,6 +49,7 @@ async fn test_crud_endpoints() {
         title: "Test API Task".to_string(),
         description: Some("Description here".to_string()),
         priority: Some(Priority::High),
+        due_date: Some("2026-11-25".to_string()),
     };
 
     let res = client
@@ -63,6 +64,7 @@ async fn test_crud_endpoints() {
     assert_eq!(created.id, 1);
     assert_eq!(created.title, "Test API Task");
     assert_eq!(created.priority, Priority::High);
+    assert_eq!(created.due_date, Some("2026-11-25".to_string()));
     assert!(!created.completed);
 
     // 2. Fetch the task
@@ -75,6 +77,7 @@ async fn test_crud_endpoints() {
     assert_eq!(res.status(), 200);
     let fetched: TodoItem = res.json().await.unwrap();
     assert_eq!(fetched.id, 1);
+    assert_eq!(fetched.due_date, Some("2026-11-25".to_string()));
 
     // 3. Toggle task
     let res = client

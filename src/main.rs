@@ -53,8 +53,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             title,
             desc,
             priority,
+            due,
         }) => {
-            cli::add_todo(storage, title, desc, priority)?;
+            cli::add_todo(storage, title, desc, priority, due)?;
         }
         Some(Commands::Done { id }) => {
             cli::toggle_todo(storage, id)?;

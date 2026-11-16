@@ -172,12 +172,18 @@ impl JsonTodoStorage {
         let _guard = self.lock.write().unwrap();
         let mut data = self.load_raw_locked()?;
 
-        let item = TodoItem::new(
+        let mut item = TodoItem::new(
             data.next_id,
             trimmed_title,
             todo_in.description.map(|d| d.trim().to_string()),
             todo_in.priority.unwrap_or_default(),
         );
+        if let Some(due) = todo_in.due_date {
+            let trimmed = due.trim().to_string();
+            if !trimmed.is_empty() {
+                item.due_date = Some(trimmed);
+            }
+        }
 
         data.next_id += 1;
         data.todos.push(item.clone());
@@ -208,6 +214,14 @@ impl JsonTodoStorage {
             }
             if let Some(priority) = todo_in.priority {
                 item.priority = priority;
+            }
+            if let Some(due) = todo_in.due_date {
+                let trimmed = due.trim().to_string();
+                item.due_date = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                };
             }
             item.updated_at = Some(Utc::now().to_rfc3339());
             let updated = item.clone();
