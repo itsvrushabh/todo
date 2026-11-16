@@ -61,18 +61,23 @@ jobs:
           git commit -m "chore(deps): weekly automated cargo dependency upgrade"
           git push origin "$BRANCH_NAME" --force
 
+          PR_BODY=$(cat << 'EOF'
+          ## 🤖 Automated Dependency Upgrade Bot
+
+          This automated PR updates project dependencies in `Cargo.lock` to their latest compatible versions.
+
+          ### Verification Checklist
+          - [x] `cargo check` passed
+          - [x] `cargo clippy` passed with zero warnings
+          - [x] `cargo test` passed across all unit and integration tests
+
+          *Automated by TaskMaster Dependency Bot.*
+          EOF
+          )
+
           gh pr create \
             --title "chore(deps): weekly automated cargo dependency upgrade" \
-            --body "## 🤖 Automated Dependency Upgrade Bot
-
-This automated PR updates project dependencies in \`Cargo.lock\` to their latest compatible versions.
-
-### Verification Checklist
-- [x] \`cargo check\` passed
-- [x] \`cargo clippy\` passed with zero warnings
-- [x] \`cargo test\` passed across all unit and integration tests
-
-*Automated by TaskMaster Dependency Bot.*" \
+            --body "$PR_BODY" \
             --base main \
             --head "$BRANCH_NAME" \
             --label "dependencies,automated" || echo "PR may already exist."
