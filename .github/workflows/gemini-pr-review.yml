@@ -3,8 +3,6 @@ name: Gemini AI PR Reviewer
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  pull_request_target:
-    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -101,7 +99,7 @@ jobs:
               }
           }
 
-          models = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash"]
+          models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
           review_text = ""
 
           for model in models:
@@ -113,17 +111,20 @@ jobs:
               )
               try:
                   with urllib.request.urlopen(req, timeout=25) as resp:
-                      data = json.loads(resp.read().decode("utf-8"))
-                      candidates = data.get("candidates", [])
-                      if candidates:
-                          parts = candidates[0].get("content", {}).get("parts", [])
-                          if parts:
-                              review_text = parts[0].get("text", "")
-                              if review_text:
-                                  print(f"Successfully generated review with {model}")
-                                  break
+                      resp_bytes = resp.read()
+                      if resp_bytes:
+                          data = json.loads(resp_bytes.decode("utf-8"))
+                          candidates = data.get("candidates", [])
+                          if candidates:
+                              parts = candidates[0].get("content", {}).get("parts", [])
+                              if parts:
+                                  review_text = parts[0].get("text", "")
+                                  if review_text:
+                                      print(f"Successfully generated review with {model}")
+                                      break
               except urllib.error.HTTPError as e:
-                  print(f"Model {model} failed with HTTP {e.code}: {e.read().decode('utf-8')[:200]}")
+                  err_body = e.read().decode("utf-8", errors="ignore")[:300]
+                  print(f"Model {model} failed with HTTP {e.code}: {err_body}")
               except Exception as e:
                   print(f"Model {model} error: {e}")
 
@@ -133,9 +134,12 @@ jobs:
           review_text += "\n\n---\n*Automated review powered by Google Gemini API & TaskMaster CI.*"
 
           # Post comment to PR
-          subprocess.run(
-              ["gh", "pr", "comment", pr_number, "--body", review_text],
-              check=True
-          )
-          print("Successfully posted Gemini PR review comment!")
+          try:
+              subprocess.run(
+                  ["gh", "pr", "comment", pr_number, "--body", review_text],
+                  check=True
+              )
+              print("Successfully posted Gemini PR review comment!")
+          except Exception as e:
+              print(f"Warning: Failed to post PR review comment: {e}")
           EOF
