@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
 <script type="module">
-import init, * as bindings from '/todo-web-dc6d1b1dc001f95d.js';
-const wasm = await init({ module_or_path: '/todo-web-87012381872cea2f_bg.wasm' });
+import init, * as bindings from './todo-web-dc6d1b1dc001f95d.js';
+const wasm = await init({ module_or_path: './todo-web-87012381872cea2f_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -31,7 +31,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
             height: 100%;
         }
     </style>
-<link rel="modulepreload" href="/todo-web-dc6d1b1dc001f95d.js" crossorigin="anonymous" integrity="sha384-5eqqfyUuEsMY1MdTn93H6HiK8P2XZ8L6ADVd/tpnV3Ef+ewh2uOJomU1qSYQ4BKR"><link rel="preload" href="/todo-web-87012381872cea2f_bg.wasm" crossorigin="anonymous" integrity="sha384-tcpv9nJE7bNeGDZy2ziWQDq5tbtyEmM8tvk9kZ23nJqmGZAraDH5mVkAMlvKx5Xn" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" href="./todo-web-dc6d1b1dc001f95d.js" crossorigin="anonymous" integrity="sha384-5eqqfyUuEsMY1MdTn93H6HiK8P2XZ8L6ADVd/tpnV3Ef+ewh2uOJomU1qSYQ4BKR"><link rel="preload" href="./todo-web-87012381872cea2f_bg.wasm" crossorigin="anonymous" integrity="sha384-tcpv9nJE7bNeGDZy2ziWQDq5tbtyEmM8tvk9kZ23nJqmGZAraDH5mVkAMlvKx5Xn" as="fetch" type="application/wasm"></head>
 <body>
     <canvas id="the_canvas_id"></canvas>
 </body>
