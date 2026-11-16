@@ -59,6 +59,11 @@ pub enum Commands {
         priority: Option<Priority>,
         #[arg(long, help = "Optional due date (YYYY-MM-DD or RFC3339)")]
         due: Option<String>,
+        #[arg(
+            long,
+            help = "Optional recurrence: daily, weekly, monthly, or Nd (e.g. 3d)"
+        )]
+        repeat: Option<String>,
     },
     /// Toggle completion status of a task
     Done {
@@ -113,8 +118,12 @@ pub fn list_todos(
                 ),
                 None => String::new(),
             };
+            let rec_badge = match &item.recurrence {
+                Some(rec) => format!(" \x1b[35m[🔁 {}]\x1b[0m", rec),
+                None => String::new(),
+            };
             println!(
-                " [{mark}] #{:<3} {:<6} {}{due_badge}",
+                " [{mark}] #{:<3} {:<6} {}{due_badge}{rec_badge}",
                 item.id, p_badge, item.title
             );
             if let Some(ref desc) = item.description {
@@ -140,14 +149,20 @@ pub fn add_todo(
     description: Option<String>,
     priority: Option<Priority>,
     due_date: Option<String>,
+    recurrence: Option<crate::models::RecurrencePattern>,
 ) -> Result<TodoItem, Box<dyn std::error::Error>> {
     let item = storage.create(TodoCreate {
         title,
         description,
         priority,
         due_date,
+        recurrence,
     })?;
-    println!("✅ Added task #{}: '{}'", item.id, item.title);
+    let rec_msg = item
+        .recurrence
+        .map(|r| format!(" (repeats {r})"))
+        .unwrap_or_default();
+    println!("✅ Added task #{}: '{}{}'", item.id, item.title, rec_msg);
     Ok(item)
 }
 
@@ -157,12 +172,24 @@ pub fn toggle_todo(
 ) -> Result<(), Box<dyn std::error::Error>> {
     match storage.toggle(id)? {
         Some(item) => {
-            let state = if item.completed {
-                "completed"
+            if let Some(ref rec) = item.recurrence {
+                let due_info = item
+                    .due_date
+                    .as_deref()
+                    .map(|d| format!(" (Next due: {d})"))
+                    .unwrap_or_default();
+                println!(
+                    "🔁 Recurring task #{} ({rec}) rolled forward{due_info}",
+                    item.id
+                );
             } else {
-                "active"
-            };
-            println!("🔄 Task #{} is now {}", item.id, state);
+                let state = if item.completed {
+                    "completed"
+                } else {
+                    "active"
+                };
+                println!("🔄 Task #{} is now {}", item.id, state);
+            }
         }
         None => {
             eprintln!("❌ Error: Todo #{id} not found.");

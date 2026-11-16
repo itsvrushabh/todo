@@ -54,8 +54,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             desc,
             priority,
             due,
+            repeat,
         }) => {
-            cli::add_todo(storage, title, desc, priority, due)?;
+            let recurrence = repeat
+                .as_deref()
+                .map(|r| r.parse::<todo::models::RecurrencePattern>())
+                .transpose()
+                .map_err(|e| format!("Invalid recurrence: {e}"))?;
+            cli::add_todo(storage, title, desc, priority, due, recurrence)?;
         }
         Some(Commands::Done { id }) => {
             cli::toggle_todo(storage, id)?;

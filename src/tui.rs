@@ -176,6 +176,7 @@ impl TuiApp {
                 description: desc,
                 priority: Some(self.new_priority),
                 due_date: None,
+                recurrence: None,
             });
             self.new_title.clear();
             self.new_desc.clear();
@@ -500,12 +501,21 @@ fn ui(f: &mut Frame, app: &TuiApp) {
                 None => Span::raw(""),
             };
 
+            let rec_span = match &item.recurrence {
+                Some(rec) => Span::styled(
+                    format!(" [🔁 {rec}]"),
+                    Style::default().fg(Color::LightMagenta),
+                ),
+                None => Span::raw(""),
+            };
+
             let line = Line::from(vec![
                 status_mark,
                 id_span,
                 priority_span,
                 title_span,
                 due_span,
+                rec_span,
             ]);
             ListItem::new(line)
         })
@@ -650,6 +660,21 @@ fn ui(f: &mut Frame, app: &TuiApp) {
                         Some(crate::models::DueStatus::Upcoming) => Span::styled(
                             item.due_date.as_deref().unwrap_or("").to_string(),
                             Style::default().fg(Color::Cyan),
+                        ),
+                        None => Span::raw("None"),
+                    },
+                ]),
+                Line::from(vec![
+                    Span::styled(
+                        "Recurrence:   ",
+                        Style::default()
+                            .fg(Color::Gray)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    match &item.recurrence {
+                        Some(rec) => Span::styled(
+                            format!("🔁 {rec}"),
+                            Style::default().fg(Color::LightMagenta),
                         ),
                         None => Span::raw("None"),
                     },

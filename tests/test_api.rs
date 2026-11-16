@@ -50,6 +50,7 @@ async fn test_crud_endpoints() {
         description: Some("Description here".to_string()),
         priority: Some(Priority::High),
         due_date: Some("2026-11-25".to_string()),
+        recurrence: None,
     };
 
     let res = client
@@ -167,4 +168,46 @@ async fn test_static_assets() {
         .await
         .unwrap();
     assert_eq!(res.status(), 200);
+}
+
+#[tokio::test]
+async fn test_recurring_task_api() {
+    let (base_url, _, _dir) = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    let new_task = TodoCreate {
+        title: "Daily Sync".to_string(),
+        description: None,
+        priority: Some(Priority::Medium),
+        due_date: Some("2026-01-01".to_string()),
+        recurrence: Some(todo::models::RecurrencePattern::Daily),
+    };
+
+    let res = client
+        .post(format!("{base_url}/api/todos"))
+        .json(&new_task)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let created: TodoItem = res.json().await.unwrap();
+    assert_eq!(
+        created.recurrence,
+        Some(todo::models::RecurrencePattern::Daily)
+    );
+
+    // Toggle recurring task via API
+    let res = client
+        .patch(format!("{base_url}/api/todos/{}/toggle", created.id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let toggled: TodoItem = res.json().await.unwrap();
+    assert!(!toggled.completed);
+    let today = chrono::Utc::now().date_naive();
+    let expected = (today + chrono::Duration::days(1))
+        .format("%Y-%m-%d")
+        .to_string();
+    assert_eq!(toggled.due_date, Some(expected));
 }

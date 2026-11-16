@@ -111,12 +111,14 @@ pub struct TodoGuiApp {
     pub new_description: String,
     pub new_priority: Priority,
     pub new_due_date: String,
+    pub new_recurrence: Option<crate::models::RecurrencePattern>,
     pub show_add_dialog: bool,
     pub editing_id: Option<i64>,
     pub edit_title: String,
     pub edit_description: String,
     pub edit_priority: Priority,
     pub edit_due_date: String,
+    pub edit_recurrence: Option<crate::models::RecurrencePattern>,
     pub storage_path: Option<PathBuf>,
     pub theme: GuiTheme,
     pub show_export_dialog: bool,
@@ -154,12 +156,14 @@ impl TodoGuiApp {
             new_description: String::new(),
             new_priority: Priority::Medium,
             new_due_date: String::new(),
+            new_recurrence: None,
             show_add_dialog: false,
             editing_id: None,
             edit_title: String::new(),
             edit_description: String::new(),
             edit_priority: Priority::Medium,
             edit_due_date: String::new(),
+            edit_recurrence: None,
             storage_path,
             theme: GuiTheme::Macchiato,
             show_export_dialog: false,
@@ -280,6 +284,7 @@ impl TodoGuiApp {
         if !due_trimmed.is_empty() {
             item.due_date = Some(due_trimmed.to_string());
         }
+        item.recurrence = self.new_recurrence;
 
         self.todos.push(item);
 
@@ -287,13 +292,23 @@ impl TodoGuiApp {
         self.new_description.clear();
         self.new_priority = Priority::Medium;
         self.new_due_date.clear();
+        self.new_recurrence = None;
         self.show_add_dialog = false;
         self.save_todos();
     }
 
     pub fn toggle_todo(&mut self, id: i64) {
         if let Some(todo) = self.todos.iter_mut().find(|t| t.id == id) {
-            todo.completed = !todo.completed;
+            if !todo.completed && todo.recurrence.is_some() {
+                if let Some(next_due) = todo.next_recurrence_date() {
+                    todo.due_date = Some(next_due);
+                    todo.completed = false;
+                } else {
+                    todo.completed = true;
+                }
+            } else {
+                todo.completed = !todo.completed;
+            }
             todo.updated_at = Some(Utc::now().to_rfc3339());
             self.save_todos();
         }
@@ -311,6 +326,7 @@ impl TodoGuiApp {
             self.edit_description = todo.description.clone().unwrap_or_default();
             self.edit_priority = todo.priority;
             self.edit_due_date = todo.due_date.clone().unwrap_or_default();
+            self.edit_recurrence = todo.recurrence;
         }
     }
 
@@ -332,6 +348,7 @@ impl TodoGuiApp {
                     } else {
                         Some(due_trimmed.to_string())
                     };
+                    todo.recurrence = self.edit_recurrence;
                     todo.updated_at = Some(Utc::now().to_rfc3339());
                     self.save_todos();
                 }
@@ -339,6 +356,7 @@ impl TodoGuiApp {
         }
         self.editing_id = None;
         self.edit_due_date.clear();
+        self.edit_recurrence = None;
     }
 
     pub fn clear_completed(&mut self) {
@@ -848,6 +866,39 @@ impl eframe::App for TodoGuiApp {
                                 );
                             });
 
+                            ui.horizontal(|ui| {
+                                ui.label("Recurrence:");
+                                let cur_rec_text = match &self.new_recurrence {
+                                    None => "None",
+                                    Some(crate::models::RecurrencePattern::Daily) => "Daily",
+                                    Some(crate::models::RecurrencePattern::Weekly) => "Weekly",
+                                    Some(crate::models::RecurrencePattern::Monthly) => "Monthly",
+                                    Some(crate::models::RecurrencePattern::CustomDays(_)) => {
+                                        "Custom"
+                                    }
+                                };
+                                egui::ComboBox::from_id_salt("new_recurrence_combo")
+                                    .selected_text(cur_rec_text)
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut self.new_recurrence, None, "None");
+                                        ui.selectable_value(
+                                            &mut self.new_recurrence,
+                                            Some(crate::models::RecurrencePattern::Daily),
+                                            "Daily",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.new_recurrence,
+                                            Some(crate::models::RecurrencePattern::Weekly),
+                                            "Weekly",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.new_recurrence,
+                                            Some(crate::models::RecurrencePattern::Monthly),
+                                            "Monthly",
+                                        );
+                                    });
+                            });
+
                             ui.add_space(8.0);
                             ui.horizontal(|ui| {
                                 if ui
@@ -936,6 +987,43 @@ impl eframe::App for TodoGuiApp {
                                         .hint_text("YYYY-MM-DD")
                                         .desired_width(160.0),
                                 );
+                            });
+
+                            ui.horizontal(|ui| {
+                                ui.label("Recurrence:");
+                                let cur_rec_text = match &self.edit_recurrence {
+                                    None => "None",
+                                    Some(crate::models::RecurrencePattern::Daily) => "Daily",
+                                    Some(crate::models::RecurrencePattern::Weekly) => "Weekly",
+                                    Some(crate::models::RecurrencePattern::Monthly) => "Monthly",
+                                    Some(crate::models::RecurrencePattern::CustomDays(_)) => {
+                                        "Custom"
+                                    }
+                                };
+                                egui::ComboBox::from_id_salt("edit_recurrence_combo")
+                                    .selected_text(cur_rec_text)
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(
+                                            &mut self.edit_recurrence,
+                                            None,
+                                            "None",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.edit_recurrence,
+                                            Some(crate::models::RecurrencePattern::Daily),
+                                            "Daily",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.edit_recurrence,
+                                            Some(crate::models::RecurrencePattern::Weekly),
+                                            "Weekly",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.edit_recurrence,
+                                            Some(crate::models::RecurrencePattern::Monthly),
+                                            "Monthly",
+                                        );
+                                    });
                             });
 
                             ui.add_space(8.0);
@@ -1079,6 +1167,17 @@ impl eframe::App for TodoGuiApp {
                                                         egui::RichText::new(due_txt)
                                                             .size(11.0)
                                                             .color(due_color)
+                                                            .strong(),
+                                                    );
+                                                }
+
+                                                if let Some(ref rec) = todo.recurrence {
+                                                    ui.label(
+                                                        egui::RichText::new(format!("🔁 {rec}"))
+                                                            .size(11.0)
+                                                            .color(egui::Color32::from_rgb(
+                                                                203, 166, 247,
+                                                            ))
                                                             .strong(),
                                                     );
                                                 }

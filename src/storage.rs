@@ -184,6 +184,7 @@ impl JsonTodoStorage {
                 item.due_date = Some(trimmed);
             }
         }
+        item.recurrence = todo_in.recurrence;
 
         data.next_id += 1;
         data.todos.push(item.clone());
@@ -209,11 +210,11 @@ impl JsonTodoStorage {
             if let Some(desc) = todo_in.description {
                 item.description = Some(desc.trim().to_string());
             }
-            if let Some(completed) = todo_in.completed {
-                item.completed = completed;
-            }
             if let Some(priority) = todo_in.priority {
                 item.priority = priority;
+            }
+            if let Some(rec) = todo_in.recurrence {
+                item.recurrence = Some(rec);
             }
             if let Some(due) = todo_in.due_date {
                 let trimmed = due.trim().to_string();
@@ -222,6 +223,18 @@ impl JsonTodoStorage {
                 } else {
                     Some(trimmed)
                 };
+            }
+            if let Some(completed) = todo_in.completed {
+                if completed && !item.completed && item.recurrence.is_some() {
+                    if let Some(next_due) = item.next_recurrence_date() {
+                        item.due_date = Some(next_due);
+                        item.completed = false;
+                    } else {
+                        item.completed = true;
+                    }
+                } else {
+                    item.completed = completed;
+                }
             }
             item.updated_at = Some(Utc::now().to_rfc3339());
             let updated = item.clone();
@@ -238,7 +251,16 @@ impl JsonTodoStorage {
         let mut data = self.load_raw_locked()?;
 
         if let Some(item) = data.todos.iter_mut().find(|t| t.id == id) {
-            item.completed = !item.completed;
+            if !item.completed && item.recurrence.is_some() {
+                if let Some(next_due) = item.next_recurrence_date() {
+                    item.due_date = Some(next_due);
+                    item.completed = false;
+                } else {
+                    item.completed = true;
+                }
+            } else {
+                item.completed = !item.completed;
+            }
             item.updated_at = Some(Utc::now().to_rfc3339());
             let updated = item.clone();
 

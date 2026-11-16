@@ -22,6 +22,7 @@ fn test_storage_creation_and_crud() {
             description: Some("Task details".to_string()),
             priority: Some(Priority::High),
             due_date: Some("2026-12-31".to_string()),
+            recurrence: None,
         })
         .unwrap();
     assert_eq!(created.id, 1);
@@ -46,6 +47,7 @@ fn test_storage_creation_and_crud() {
                 completed: Some(false),
                 priority: Some(Priority::Low),
                 due_date: Some("2027-01-01".to_string()),
+                recurrence: None,
             },
         )
         .unwrap()
@@ -83,6 +85,7 @@ fn test_filtering_and_search() {
             description: Some("Milk and bread".to_string()),
             priority: Some(Priority::High),
             due_date: None,
+            recurrence: None,
         })
         .unwrap();
 
@@ -92,6 +95,7 @@ fn test_filtering_and_search() {
             description: Some("Integration & unit".to_string()),
             priority: Some(Priority::Medium),
             due_date: None,
+            recurrence: None,
         })
         .unwrap();
 
@@ -101,6 +105,7 @@ fn test_filtering_and_search() {
             description: None,
             priority: Some(Priority::Low),
             due_date: None,
+            recurrence: None,
         })
         .unwrap();
     storage.toggle(task3.id).unwrap();
@@ -140,6 +145,7 @@ fn test_concurrent_access() {
                     description: None,
                     priority: Some(Priority::Medium),
                     due_date: None,
+                    recurrence: None,
                 })
                 .unwrap();
         }));
@@ -151,4 +157,35 @@ fn test_concurrent_access() {
 
     let all = storage.get_all(None, None, None).unwrap();
     assert_eq!(all.len(), 10);
+}
+
+#[test]
+fn test_recurring_task_toggle() {
+    let dir = tempdir().unwrap();
+    let file_path = dir.path().join("todos_recurring.json");
+    let storage = JsonTodoStorage::new(&file_path).unwrap();
+
+    let task = storage
+        .create(TodoCreate {
+            title: "Daily Standup".to_string(),
+            description: None,
+            priority: Some(Priority::High),
+            due_date: Some("2026-01-01".to_string()),
+            recurrence: Some(todo::models::RecurrencePattern::Daily),
+        })
+        .unwrap();
+
+    assert_eq!(task.due_date, Some("2026-01-01".to_string()));
+    assert!(!task.completed);
+
+    // Toggle recurring task
+    let toggled = storage.toggle(task.id).unwrap().unwrap();
+    // Should NOT be completed, but rolled forward to tomorrow
+    assert!(!toggled.completed);
+    assert_ne!(toggled.due_date, Some("2026-01-01".to_string()));
+    let today = chrono::Utc::now().date_naive();
+    let expected_due = (today + chrono::Duration::days(1))
+        .format("%Y-%m-%d")
+        .to_string();
+    assert_eq!(toggled.due_date, Some(expected_due));
 }
