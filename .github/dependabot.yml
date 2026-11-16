@@ -9,9 +9,19 @@ updates:
     open-pull-requests-limit: 10
     commit-message:
       prefix: "chore(deps)"
+      include: "scope"
     labels:
       - "dependencies"
       - "rust"
+    reviewers:
+      - "itsvrushabh"
+    groups:
+      rust-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -22,6 +32,13 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "ci(actions)"
+      include: "scope"
     labels:
       - "dependencies"
       - "github-actions"
+    reviewers:
+      - "itsvrushabh"
+    groups:
+      actions:
+        patterns:
+          - "*"
