@@ -4,6 +4,22 @@ TaskMaster compiles down to a single self-contained binary embedding all fronten
 
 ---
 
+## 📦 Pre-Compiled Release Binaries
+
+Pre-compiled standalone binaries are built and attached to every [GitHub Release](https://github.com/itsvrushabh/todo/releases):
+
+| Platform | Architecture | Release Archive |
+|---|---|---|
+| **Linux** | `x86_64` (AMD64) | `taskmaster-linux-amd64.tar.gz` |
+| **Linux** | `aarch64` (ARM64) | `taskmaster-linux-arm64.tar.gz` |
+| **macOS** | Apple Silicon (`aarch64`) | `taskmaster-macos-arm64.tar.gz` |
+| **macOS** | Intel (`x86_64`) | `taskmaster-macos-x86_64.tar.gz` |
+| **Windows** | `x86_64` (AMD64) | `taskmaster-windows-amd64.zip` |
+
+Extract the archive and move `todo` (or `todo.exe`) to your `$PATH` (e.g. `/usr/local/bin` on Linux/macOS).
+
+---
+
 ## 🐳 Docker Deployment
 
 ### 1. Docker Compose (Recommended)

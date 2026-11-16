@@ -1,11 +1,21 @@
 # Multi-stage Dockerfile for TaskMaster Rust Todo Application
 # Stage 1: Build binary
-FROM rust:1.85-slim-bookworm AS builder
+FROM rust:slim-bookworm AS builder
 
 WORKDIR /usr/src/todo
 
-# Install required build tools
-RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+# Install required build tools and GUI/X11/Wayland libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libssl-dev \
+    libx11-dev \
+    libxcursor-dev \
+    libxrandr-dev \
+    libxi-dev \
+    libxinerama-dev \
+    libxkbcommon-dev \
+    libwayland-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency manifests
 COPY Cargo.toml Cargo.lock ./
@@ -29,7 +39,17 @@ RUN cargo build --release --bin todo
 # Stage 2: Minimal runtime image
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    libx11-6 \
+    libxcursor1 \
+    libxrandr2 \
+    libxi6 \
+    libxinerama1 \
+    libxkbcommon0 \
+    libwayland-client0 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

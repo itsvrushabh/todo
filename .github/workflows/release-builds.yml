@@ -53,6 +53,14 @@ jobs:
         run: |
           cargo install cross --git https://github.com/cross-rs/cross
 
+      - name: Install Linux build dependencies
+        if: matrix.os == 'ubuntu-latest' && !matrix.use_cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+            libxinerama-dev libxkbcommon-dev libwayland-dev
+
       - name: Build release binary
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
