@@ -1,0 +1,38 @@
+name: GitHub Copilot PR Review Request
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+concurrency:
+  group: copilot-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  request-copilot-review:
+    name: Request Copilot Review
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Request review from GitHub Copilot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "Attempting to request code review from GitHub Copilot for PR #${PR_NUMBER}..."
+
+          # Attempt adding copilot / copilot-pull-request-reviewer as reviewer
+          if gh pr edit "${PR_NUMBER}" --add-reviewer "copilot" 2>&1; then
+            echo "✅ Successfully requested code review from @copilot!"
+          elif gh pr edit "${PR_NUMBER}" --add-reviewer "copilot-pull-request-reviewer" 2>&1; then
+            echo "✅ Successfully requested code review from @copilot-pull-request-reviewer!"
+          else
+            echo "ℹ️ Automated assignment via GitHub API requires Copilot PR Review enabled under: Repository Settings -> Copilot -> Code review."
+          fi
