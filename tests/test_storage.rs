@@ -131,7 +131,9 @@ fn test_filtering_and_search() {
     assert_eq!(active.len(), 2);
 
     // Filter completed
-    let completed = storage.get_all(Some("completed"), None, None, None).unwrap();
+    let completed = storage
+        .get_all(Some("completed"), None, None, None)
+        .unwrap();
     assert_eq!(completed.len(), 1);
 
     // Filter priority

@@ -570,7 +570,9 @@ pub fn render_mobile_focus_view(app: &TodoGuiApp, ui: &mut egui::Ui, action: &mu
                                                 .link(
                                                     egui::RichText::new(format!("#{tag}"))
                                                         .size(10.5)
-                                                        .color(egui::Color32::from_rgb(137, 180, 250)),
+                                                        .color(egui::Color32::from_rgb(
+                                                            137, 180, 250,
+                                                        )),
                                                 )
                                                 .clicked()
                                             {
@@ -909,7 +911,9 @@ pub fn render_standard_list_view(
                                                 .link(
                                                     egui::RichText::new(format!("#{tag}"))
                                                         .size(10.5)
-                                                        .color(egui::Color32::from_rgb(137, 180, 250)),
+                                                        .color(egui::Color32::from_rgb(
+                                                            137, 180, 250,
+                                                        )),
                                                 )
                                                 .clicked()
                                             {

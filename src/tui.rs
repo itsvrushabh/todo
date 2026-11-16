@@ -89,7 +89,10 @@ impl TuiApp {
             Some(self.search_query.as_str())
         };
 
-        if let Ok(items) = self.storage.get_all(status_filter, search_filter, None, None) {
+        if let Ok(items) = self
+            .storage
+            .get_all(status_filter, search_filter, None, None)
+        {
             self.todos = items;
         }
         if let Ok(s) = self.storage.get_stats() {

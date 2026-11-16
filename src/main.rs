@@ -72,10 +72,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Done { id }) => {
             cli::toggle_todo(storage, id)?;
         }
-        Some(Commands::SubtaskDone { id, subtask_id }) => match storage.toggle_subtask(id, &subtask_id)? {
-            Some(_) => println!("🔄 Subtask '{subtask_id}' on task #{id} toggled"),
-            None => eprintln!("❌ Error: Subtask '{subtask_id}' on task #{id} not found"),
-        },
+        Some(Commands::SubtaskDone { id, subtask_id }) => {
+            match storage.toggle_subtask(id, &subtask_id)? {
+                Some(_) => println!("🔄 Subtask '{subtask_id}' on task #{id} toggled"),
+                None => eprintln!("❌ Error: Subtask '{subtask_id}' on task #{id} not found"),
+            }
+        }
         Some(Commands::Rm { id }) => {
             cli::delete_todo(storage, id)?;
         }

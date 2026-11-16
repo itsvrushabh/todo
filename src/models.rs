@@ -212,7 +212,8 @@ impl TodoItem {
     pub fn extract_tags(text: &str) -> Vec<String> {
         let mut tags = Vec::new();
         for word in text.split_whitespace() {
-            let clean = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '#' && c != '-' && c != '_');
+            let clean = word
+                .trim_matches(|c: char| !c.is_alphanumeric() && c != '#' && c != '-' && c != '_');
             if clean.starts_with('#') && clean.len() > 1 {
                 let tag = clean.trim_start_matches('#').to_lowercase();
                 if !tag.is_empty() && !tags.contains(&tag) {

@@ -80,11 +80,13 @@ impl crate::models::PendingMutation {
                 format!("{base}/api/todos/{id}/toggle"),
                 &[("Accept", "*/*")],
             ),
-            crate::models::PendingMutation::ToggleSubtask { id, subtask_id } => ehttp::Request::new(
-                ehttp::Method::PATCH,
-                format!("{base}/api/todos/{id}/subtasks/{subtask_id}/toggle"),
-                &[("Accept", "*/*")],
-            ),
+            crate::models::PendingMutation::ToggleSubtask { id, subtask_id } => {
+                ehttp::Request::new(
+                    ehttp::Method::PATCH,
+                    format!("{base}/api/todos/{id}/subtasks/{subtask_id}/toggle"),
+                    &[("Accept", "*/*")],
+                )
+            }
         }
     }
 }
