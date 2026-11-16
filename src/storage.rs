@@ -140,6 +140,7 @@ impl JsonTodoStorage {
         status: Option<&str>,
         search: Option<&str>,
         priority: Option<&str>,
+        tag: Option<&str>,
     ) -> Result<Vec<TodoItem>, StorageError> {
         let _guard = self.read_lock();
         let data = self.load_raw_locked()?;
@@ -156,6 +157,17 @@ impl JsonTodoStorage {
         if let Some(p) = priority {
             let p_lower = p.to_lowercase();
             items.retain(|t| t.priority.to_string() == p_lower);
+        }
+
+        if let Some(t) = tag {
+            let t_clean = t.trim().trim_start_matches('#').to_lowercase();
+            if !t_clean.is_empty() {
+                items.retain(|item| {
+                    item.tags
+                        .iter()
+                        .any(|existing| existing.to_lowercase() == t_clean)
+                });
+            }
         }
 
         if let Some(query) = search {
@@ -213,6 +225,15 @@ impl JsonTodoStorage {
                 item.uuid = Some(trimmed_uuid);
             }
         }
+        for tag in todo_in.tags {
+            let clean = tag.trim().trim_start_matches('#').to_lowercase();
+            if !clean.is_empty() && !item.tags.contains(&clean) {
+                item.tags.push(clean);
+            }
+        }
+        if !todo_in.subtasks.is_empty() {
+            item.subtasks = todo_in.subtasks;
+        }
         if let Some(due) = todo_in.due_date {
             let trimmed = due.trim().to_string();
             if !trimmed.is_empty() {
@@ -265,6 +286,19 @@ impl JsonTodoStorage {
                     item.uuid = Some(trimmed);
                 }
             }
+            if let Some(tags) = todo_in.tags {
+                let mut clean_tags = Vec::new();
+                for t in tags {
+                    let clean = t.trim().trim_start_matches('#').to_lowercase();
+                    if !clean.is_empty() && !clean_tags.contains(&clean) {
+                        clean_tags.push(clean);
+                    }
+                }
+                item.tags = clean_tags;
+            }
+            if let Some(subtasks) = todo_in.subtasks {
+                item.subtasks = subtasks;
+            }
             if let Some(completed) = todo_in.completed {
                 if completed && !item.completed && item.recurrence.is_some() {
                     if let Some(next_due) = item.next_recurrence_date() {
@@ -285,6 +319,26 @@ impl JsonTodoStorage {
         } else {
             Ok(None)
         }
+    }
+
+    pub fn toggle_subtask(
+        &self,
+        id: i64,
+        subtask_id: &str,
+    ) -> Result<Option<TodoItem>, StorageError> {
+        let _guard = self.write_lock();
+        let mut data = self.load_raw_locked()?;
+
+        if let Some(item) = data.todos.iter_mut().find(|t| t.id == id) {
+            if let Some(sub) = item.subtasks.iter_mut().find(|s| s.id == subtask_id) {
+                sub.completed = !sub.completed;
+                item.updated_at = Some(Utc::now().to_rfc3339());
+                let updated = item.clone();
+                self.save_raw_locked(&data)?;
+                return Ok(Some(updated));
+            }
+        }
+        Ok(None)
     }
 
     pub fn toggle(&self, id: i64) -> Result<Option<TodoItem>, StorageError> {

@@ -48,6 +48,8 @@ pub enum Commands {
         search: Option<String>,
         #[arg(short, long, help = "Filter by priority: low, medium, high")]
         priority: Option<String>,
+        #[arg(short, long, help = "Filter by tag (e.g. work, dev)")]
+        tag: Option<String>,
     },
     /// Add a new task
     Add {
@@ -64,11 +66,22 @@ pub enum Commands {
             help = "Optional recurrence: daily, weekly, monthly, or Nd (e.g. 3d)"
         )]
         repeat: Option<String>,
+        #[arg(short, long, help = "Optional comma-separated tags (e.g. work,dev)")]
+        tags: Option<String>,
+        #[arg(long, help = "Optional comma-separated subtasks")]
+        subtasks: Option<String>,
     },
     /// Toggle completion status of a task
     Done {
         #[arg(help = "Task ID")]
         id: i64,
+    },
+    /// Toggle completion of a subtask within a task
+    SubtaskDone {
+        #[arg(help = "Task ID")]
+        id: i64,
+        #[arg(help = "Subtask ID")]
+        subtask_id: String,
     },
     /// Delete a task
     Rm {
@@ -86,8 +99,9 @@ pub fn list_todos(
     status: Option<&str>,
     search: Option<&str>,
     priority: Option<&str>,
+    tag: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let items = storage.get_all(status, search, priority)?;
+    let items = storage.get_all(status, search, priority, tag)?;
     let stats = storage.get_stats()?;
 
     println!("\n{}", "=".repeat(60));
@@ -122,14 +136,35 @@ pub fn list_todos(
                 Some(rec) => format!(" \x1b[35m[🔁 {}]\x1b[0m", rec),
                 None => String::new(),
             };
+            let tag_badge = if item.tags.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " \x1b[34m{}\x1b[0m",
+                    item.tags
+                        .iter()
+                        .map(|t| format!("[#{t}]"))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )
+            };
+            let subtask_badge = if let Some((done, total)) = item.subtask_progress() {
+                format!(" \x1b[32m({done}/{total} subtasks)\x1b[0m")
+            } else {
+                String::new()
+            };
             println!(
-                " [{mark}] #{:<3} {:<6} {}{due_badge}{rec_badge}",
+                " [{mark}] #{:<3} {:<6} {}{due_badge}{rec_badge}{tag_badge}{subtask_badge}",
                 item.id, p_badge, item.title
             );
             if let Some(ref desc) = item.description {
                 if !desc.is_empty() {
                     println!("       ↳ {desc}");
                 }
+            }
+            for sub in &item.subtasks {
+                let s_mark = if sub.completed { "✓" } else { " " };
+                println!("          [{s_mark}] - {} (id: {})", sub.title, sub.id);
             }
         }
     }
@@ -143,6 +178,7 @@ pub fn list_todos(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn add_todo(
     storage: Arc<JsonTodoStorage>,
     title: String,
@@ -150,7 +186,28 @@ pub fn add_todo(
     priority: Option<Priority>,
     due_date: Option<String>,
     recurrence: Option<crate::models::RecurrencePattern>,
+    tags: Option<String>,
+    subtasks: Option<String>,
 ) -> Result<TodoItem, Box<dyn std::error::Error>> {
+    let parsed_tags = tags
+        .map(|t| {
+            t.split(',')
+                .map(|s| s.trim().trim_start_matches('#').to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let parsed_subtasks = subtasks
+        .map(|s| {
+            s.split(',')
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .map(crate::models::Subtask::new)
+                .collect()
+        })
+        .unwrap_or_default();
+
     let item = storage.create(TodoCreate {
         title,
         description,
@@ -158,6 +215,8 @@ pub fn add_todo(
         due_date,
         recurrence,
         uuid: None,
+        tags: parsed_tags,
+        subtasks: parsed_subtasks,
     })?;
     let rec_msg = item
         .recurrence

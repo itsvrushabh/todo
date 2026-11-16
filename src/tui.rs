@@ -89,7 +89,7 @@ impl TuiApp {
             Some(self.search_query.as_str())
         };
 
-        if let Ok(items) = self.storage.get_all(status_filter, search_filter, None) {
+        if let Ok(items) = self.storage.get_all(status_filter, search_filter, None, None) {
             self.todos = items;
         }
         if let Ok(s) = self.storage.get_stats() {
@@ -171,6 +171,7 @@ impl TuiApp {
                 Some(self.new_desc.trim().to_string())
             };
 
+            let auto_tags = crate::models::TodoItem::extract_tags(&title);
             let _ = self.storage.create(TodoCreate {
                 title,
                 description: desc,
@@ -178,6 +179,8 @@ impl TuiApp {
                 due_date: None,
                 recurrence: None,
                 uuid: None,
+                tags: auto_tags,
+                subtasks: Vec::new(),
             });
             self.new_title.clear();
             self.new_desc.clear();
