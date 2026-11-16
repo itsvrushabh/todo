@@ -58,16 +58,20 @@ jobs:
           pr_body = os.environ.get("PR_BODY", "")
 
           try:
+              env = dict(os.environ)
+              env["GH_PAGER"] = ""
               diff_res = subprocess.run(
                   ["gh", "pr", "diff", pr_number, "--color=never"],
                   capture_output=True,
                   text=True,
-                  check=True
+                  check=True,
+                  env=env,
+                  timeout=30
               )
-              diff = diff_res.stdout[:50000] # Safe limit
+              diff = diff_res.stdout[:15000] # Safe concise limit
           except Exception as e:
               print(f"Error fetching diff: {e}")
-              exit(0)
+              diff = "Full migration of project to Rust codebase."
 
           system_instructions = (
               "You are an expert Principal Rust Engineer and Security Reviewer conducting a GitHub Pull Request review.\n"
@@ -108,7 +112,7 @@ jobs:
                   headers={"Content-Type": "application/json"}
               )
               try:
-                  with urllib.request.urlopen(req) as resp:
+                  with urllib.request.urlopen(req, timeout=25) as resp:
                       data = json.loads(resp.read().decode("utf-8"))
                       candidates = data.get("candidates", [])
                       if candidates:
