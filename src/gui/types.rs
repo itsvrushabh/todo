@@ -40,6 +40,7 @@ pub enum SyncStatus {
 
 pub enum SyncResult {
     FetchedTodos(Vec<TodoItem>),
+    DifferentialSync(crate::models::SyncResponse),
     MutationDrained {
         success: bool,
         error: Option<String>,

@@ -1,4 +1,6 @@
-use crate::models::{TodoCreate, TodoItem, TodoStats, TodoUpdate};
+use crate::models::{
+    SyncApplyResult, SyncQuery, SyncResponse, TodoCreate, TodoItem, TodoStats, TodoUpdate,
+};
 use crate::storage::JsonTodoStorage;
 use axum::{
     extract::{Path, Query, State},
@@ -50,6 +52,7 @@ pub fn create_router(storage: Arc<JsonTodoStorage>) -> Router {
         )
         .route("/api/todos-completed/clear", delete(clear_completed))
         .route("/api/stats", get(get_stats))
+        .route("/api/sync", get(sync_pull).post(sync_push))
         // Web & PWA routes
         .route("/", get(serve_index))
         .route("/manifest.json", get(serve_manifest))
@@ -217,6 +220,32 @@ async fn get_stats(
         )
     })?;
     Ok(Json(stats))
+}
+
+async fn sync_pull(
+    State(storage): State<Arc<JsonTodoStorage>>,
+    Query(query): Query<SyncQuery>,
+) -> Result<Json<SyncResponse>, (StatusCode, Json<serde_json::Value>)> {
+    match storage.get_sync(query.since.as_deref()) {
+        Ok(resp) => Ok(Json(resp)),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": e.to_string() })),
+        )),
+    }
+}
+
+async fn sync_push(
+    State(storage): State<Arc<JsonTodoStorage>>,
+    Json(payload): Json<SyncResponse>,
+) -> Result<Json<SyncApplyResult>, (StatusCode, Json<serde_json::Value>)> {
+    match storage.apply_sync(payload) {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": e.to_string() })),
+        )),
+    }
 }
 
 // Static Assets & PWA Handlers

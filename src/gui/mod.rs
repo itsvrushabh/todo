@@ -50,6 +50,7 @@ pub struct TodoGuiApp {
     pub pending_sync_events: std::sync::Arc<std::sync::Mutex<Vec<SyncResult>>>,
     pub pending_mutations: Vec<crate::models::PendingMutation>,
     pub is_draining_queue: bool,
+    pub last_sync_timestamp: Option<String>,
 }
 
 impl TodoGuiApp {
@@ -91,6 +92,7 @@ impl TodoGuiApp {
             pending_sync_events: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             pending_mutations: Vec::new(),
             is_draining_queue: false,
+            last_sync_timestamp: None,
         };
         app.load_todos();
         app
@@ -537,6 +539,99 @@ impl TodoGuiApp {
         });
     }
 
+    pub fn fetch_differential_sync(&mut self, ctx: egui::Context) {
+        let trimmed_url = self.server_url.trim().trim_end_matches('/');
+        if trimmed_url.is_empty() {
+            self.sync_status = SyncStatus::LocalOnly;
+            return;
+        }
+
+        self.sync_status = SyncStatus::Syncing;
+        let url = match &self.last_sync_timestamp {
+            Some(since) => format!("{trimmed_url}/api/sync?since={since}"),
+            None => format!("{trimmed_url}/api/sync"),
+        };
+        let request = ehttp::Request::get(&url);
+        let pending = self.pending_sync_events.clone();
+
+        ehttp::fetch(request, move |result| {
+            if let Ok(mut guard) = pending.lock() {
+                match result {
+                    Ok(response) => {
+                        if response.status == 200 {
+                            if let Ok(sync_resp) = serde_json::from_slice::<
+                                crate::models::SyncResponse,
+                            >(&response.bytes)
+                            {
+                                guard.push(SyncResult::DifferentialSync(sync_resp));
+                            } else {
+                                guard.push(SyncResult::SyncError(
+                                    "Failed to parse SyncResponse from server".to_string(),
+                                ));
+                            }
+                        } else {
+                            guard.push(SyncResult::SyncError(format!(
+                                "Server error: HTTP {}",
+                                response.status
+                            )));
+                        }
+                    }
+                    Err(err) => {
+                        guard.push(SyncResult::SyncError(format!("Network error: {err}")));
+                    }
+                }
+            }
+            ctx.request_repaint();
+        });
+    }
+
+    pub fn merge_differential_sync(&mut self, sync: crate::models::SyncResponse) {
+        self.last_sync_timestamp = Some(sync.server_timestamp);
+
+        // 1. Apply remote deletions
+        for del_uuid in &sync.deleted_uuids {
+            let trimmed = del_uuid.trim();
+            if !trimmed.is_empty() {
+                self.todos.retain(|t| t.uuid.as_deref() != Some(trimmed));
+            }
+        }
+
+        // 2. Apply remote updates with Last-Write-Wins (LWW)
+        for remote in sync.updated_todos {
+            if let Some(remote_uuid) = &remote.uuid {
+                let remote_ts = remote
+                    .updated_at
+                    .as_deref()
+                    .unwrap_or(&remote.created_at)
+                    .to_string();
+                if let Some(local) = self
+                    .todos
+                    .iter_mut()
+                    .find(|t| t.uuid.as_deref() == Some(remote_uuid))
+                {
+                    let local_ts = local.updated_at.as_deref().unwrap_or(&local.created_at);
+                    if remote_ts.as_str() >= local_ts {
+                        local.title = remote.title;
+                        local.description = remote.description;
+                        local.completed = remote.completed;
+                        local.priority = remote.priority;
+                        local.due_date = remote.due_date;
+                        local.recurrence = remote.recurrence;
+                        local.tags = remote.tags;
+                        local.subtasks = remote.subtasks;
+                        local.estimated_minutes = remote.estimated_minutes;
+                        local.updated_at = remote.updated_at.or(Some(remote_ts));
+                    }
+                } else {
+                    self.todos.push(remote);
+                }
+            } else {
+                self.todos.push(remote);
+            }
+        }
+        self.save_todos();
+    }
+
     pub fn test_connection(&mut self, ctx: egui::Context) {
         let trimmed_url = self.server_url.trim().trim_end_matches('/');
         if trimmed_url.is_empty() {
@@ -783,6 +878,10 @@ impl eframe::App for TodoGuiApp {
                     self.todos = items;
                     self.sync_status = SyncStatus::Connected;
                     self.save_todos();
+                }
+                SyncResult::DifferentialSync(sync) => {
+                    self.merge_differential_sync(sync);
+                    self.sync_status = SyncStatus::Connected;
                 }
                 SyncResult::MutationDrained { success, error: _ } => {
                     self.is_draining_queue = false;
@@ -1740,5 +1839,110 @@ mod tests {
         app.toggle_subtask(1, &sub_id);
         assert!(app.todos[0].subtasks[0].completed);
         assert_eq!(app.pending_mutations.len(), 1);
+    }
+
+    #[test]
+    fn test_gui_differential_sync_merge_lww() {
+        use crate::models::SyncResponse;
+
+        let mut app = TodoGuiApp::new(None);
+        app.todos = vec![
+            TodoItem {
+                id: 1,
+                uuid: Some("uuid-to-delete".to_string()),
+                title: "To be deleted".into(),
+                description: None,
+                completed: false,
+                priority: Priority::Low,
+                due_date: None,
+                recurrence: None,
+                estimated_minutes: None,
+                created_at: "2026-11-16T10:00:00Z".to_string(),
+                updated_at: None,
+                tags: Vec::new(),
+                subtasks: Vec::new(),
+            },
+            TodoItem {
+                id: 2,
+                uuid: Some("uuid-to-update".to_string()),
+                title: "Local version".into(),
+                description: None,
+                completed: false,
+                priority: Priority::Medium,
+                due_date: None,
+                recurrence: None,
+                estimated_minutes: None,
+                created_at: "2026-11-16T10:00:00Z".to_string(),
+                updated_at: Some("2026-11-16T11:00:00Z".to_string()),
+                tags: Vec::new(),
+                subtasks: Vec::new(),
+            },
+        ];
+
+        let sync_resp = SyncResponse {
+            deleted_uuids: vec!["uuid-to-delete".to_string()],
+            updated_todos: vec![
+                // Remote update with newer timestamp (12:00:00Z > 11:00:00Z)
+                TodoItem {
+                    id: 99,
+                    uuid: Some("uuid-to-update".to_string()),
+                    title: "Remote updated version".into(),
+                    description: Some("New desc".into()),
+                    completed: true,
+                    priority: Priority::High,
+                    due_date: None,
+                    recurrence: None,
+                    estimated_minutes: None,
+                    created_at: "2026-11-16T10:00:00Z".to_string(),
+                    updated_at: Some("2026-11-16T12:00:00Z".to_string()),
+                    tags: vec!["synced".to_string()],
+                    subtasks: Vec::new(),
+                },
+                // Brand new remote item
+                TodoItem {
+                    id: 100,
+                    uuid: Some("uuid-new-remote".to_string()),
+                    title: "Brand new remote task".into(),
+                    description: None,
+                    completed: false,
+                    priority: Priority::Low,
+                    due_date: None,
+                    recurrence: None,
+                    estimated_minutes: None,
+                    created_at: "2026-11-16T12:00:00Z".to_string(),
+                    updated_at: None,
+                    tags: Vec::new(),
+                    subtasks: Vec::new(),
+                },
+            ],
+            server_timestamp: "2026-11-16T12:05:00Z".to_string(),
+        };
+
+        app.merge_differential_sync(sync_resp);
+
+        assert_eq!(
+            app.last_sync_timestamp.as_deref(),
+            Some("2026-11-16T12:05:00Z")
+        );
+        assert_eq!(app.todos.len(), 2);
+        // "uuid-to-delete" was deleted
+        assert!(!app
+            .todos
+            .iter()
+            .any(|t| t.uuid.as_deref() == Some("uuid-to-delete")));
+        // "uuid-to-update" was updated
+        let updated = app
+            .todos
+            .iter()
+            .find(|t| t.uuid.as_deref() == Some("uuid-to-update"))
+            .unwrap();
+        assert_eq!(updated.title, "Remote updated version");
+        assert!(updated.completed);
+        assert_eq!(updated.priority, Priority::High);
+        // "uuid-new-remote" was added
+        assert!(app
+            .todos
+            .iter()
+            .any(|t| t.uuid.as_deref() == Some("uuid-new-remote")));
     }
 }

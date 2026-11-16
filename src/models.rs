@@ -421,6 +421,31 @@ pub enum PendingMutation {
     ToggleSubtask { id: i64, subtask_id: String },
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Tombstone {
+    pub uuid: String,
+    pub deleted_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct SyncQuery {
+    #[serde(default)]
+    pub since: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct SyncResponse {
+    pub updated_todos: Vec<TodoItem>,
+    pub deleted_uuids: Vec<String>,
+    pub server_timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct SyncApplyResult {
+    pub applied_updates: usize,
+    pub applied_deletions: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TodoStats {
     pub total: usize,
@@ -653,5 +678,28 @@ mod tests {
         let update_json = serde_json::to_string(&update_mut).unwrap();
         let update_decoded: PendingMutation = serde_json::from_str(&update_json).unwrap();
         assert_eq!(update_mut, update_decoded);
+    }
+
+    #[test]
+    fn test_sync_models_serialization() {
+        let tombstone = Tombstone {
+            uuid: "tomb-uuid-1".to_string(),
+            deleted_at: "2026-11-16T18:00:00Z".to_string(),
+        };
+        let tomb_json = serde_json::to_string(&tombstone).unwrap();
+        let tomb_decoded: Tombstone = serde_json::from_str(&tomb_json).unwrap();
+        assert_eq!(tombstone, tomb_decoded);
+
+        let query: SyncQuery = serde_json::from_str(r#"{"since":"2026-11-16T00:00:00Z"}"#).unwrap();
+        assert_eq!(query.since.as_deref(), Some("2026-11-16T00:00:00Z"));
+
+        let resp = SyncResponse {
+            updated_todos: vec![TodoItem::new(1, "Synced".into(), None, Priority::High)],
+            deleted_uuids: vec!["tomb-uuid-1".into()],
+            server_timestamp: "2026-11-16T19:00:00Z".into(),
+        };
+        let resp_json = serde_json::to_string(&resp).unwrap();
+        let resp_decoded: SyncResponse = serde_json::from_str(&resp_json).unwrap();
+        assert_eq!(resp, resp_decoded);
     }
 }
