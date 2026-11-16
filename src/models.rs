@@ -47,6 +47,7 @@ pub enum DueStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TodoItem {
+    #[serde(default)]
     pub id: i64,
     pub title: String,
     #[serde(default)]

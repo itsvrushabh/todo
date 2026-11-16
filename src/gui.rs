@@ -10,6 +10,99 @@ pub enum FilterStatus {
     Completed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GuiTheme {
+    #[default]
+    Macchiato,
+    Latte,
+    HighContrast,
+}
+
+impl GuiTheme {
+    pub fn is_dark(&self) -> bool {
+        match self {
+            GuiTheme::Macchiato | GuiTheme::HighContrast => true,
+            GuiTheme::Latte => false,
+        }
+    }
+
+    pub fn bg(&self) -> egui::Color32 {
+        match self {
+            GuiTheme::Macchiato => egui::Color32::from_rgb(24, 24, 37), // Base
+            GuiTheme::Latte => egui::Color32::from_rgb(239, 241, 245),  // Base
+            GuiTheme::HighContrast => egui::Color32::from_rgb(0, 0, 0),
+        }
+    }
+
+    pub fn top_panel_bg(&self) -> egui::Color32 {
+        match self {
+            GuiTheme::Macchiato => egui::Color32::from_rgb(30, 30, 46), // Mantle
+            GuiTheme::Latte => egui::Color32::from_rgb(230, 233, 239),  // Mantle
+            GuiTheme::HighContrast => egui::Color32::from_rgb(18, 18, 18),
+        }
+    }
+
+    pub fn card_bg(&self, completed: bool) -> egui::Color32 {
+        match self {
+            GuiTheme::Macchiato => {
+                if completed {
+                    egui::Color32::from_rgb(20, 20, 30)
+                } else {
+                    egui::Color32::from_rgb(30, 30, 46)
+                }
+            }
+            GuiTheme::Latte => {
+                if completed {
+                    egui::Color32::from_rgb(235, 237, 242)
+                } else {
+                    egui::Color32::from_rgb(255, 255, 255)
+                }
+            }
+            GuiTheme::HighContrast => {
+                if completed {
+                    egui::Color32::from_rgb(15, 15, 15)
+                } else {
+                    egui::Color32::from_rgb(24, 24, 24)
+                }
+            }
+        }
+    }
+
+    pub fn card_border(&self, completed: bool) -> egui::Color32 {
+        match self {
+            GuiTheme::Macchiato => {
+                if completed {
+                    egui::Color32::from_rgb(49, 50, 68)
+                } else {
+                    egui::Color32::from_rgb(69, 71, 90)
+                }
+            }
+            GuiTheme::Latte => {
+                if completed {
+                    egui::Color32::from_rgb(204, 208, 218)
+                } else {
+                    egui::Color32::from_rgb(188, 192, 204)
+                }
+            }
+            GuiTheme::HighContrast => {
+                if completed {
+                    egui::Color32::from_rgb(100, 100, 100)
+                } else {
+                    egui::Color32::from_rgb(255, 255, 255)
+                }
+            }
+        }
+    }
+
+    pub fn primary_text(&self) -> egui::Color32 {
+        match self {
+            GuiTheme::Macchiato => egui::Color32::from_rgb(205, 214, 244),
+            GuiTheme::Latte => egui::Color32::from_rgb(76, 79, 105),
+            GuiTheme::HighContrast => egui::Color32::from_rgb(255, 255, 255),
+        }
+    }
+}
+
 pub struct TodoGuiApp {
     pub todos: Vec<TodoItem>,
     pub filter: FilterStatus,
@@ -25,6 +118,12 @@ pub struct TodoGuiApp {
     pub edit_priority: Priority,
     pub edit_due_date: String,
     pub storage_path: Option<PathBuf>,
+    pub theme: GuiTheme,
+    pub show_export_dialog: bool,
+    pub export_markdown: bool,
+    pub show_import_dialog: bool,
+    pub import_text: String,
+    pub import_status_message: Option<String>,
 }
 
 impl TodoGuiApp {
@@ -44,6 +143,12 @@ impl TodoGuiApp {
             edit_priority: Priority::Medium,
             edit_due_date: String::new(),
             storage_path,
+            theme: GuiTheme::Macchiato,
+            show_export_dialog: false,
+            export_markdown: false,
+            show_import_dialog: false,
+            import_text: String::new(),
+            import_status_message: None,
         };
         app.load_todos();
         app
@@ -212,6 +317,47 @@ impl TodoGuiApp {
         self.save_todos();
     }
 
+    pub fn export_to_json(&self) -> String {
+        serde_json::to_string_pretty(&self.todos).unwrap_or_default()
+    }
+
+    pub fn export_to_markdown(&self) -> String {
+        let mut out = String::from("# TaskMaster Export\n\n");
+        for todo in &self.todos {
+            let check = if todo.completed { "[x]" } else { "[ ]" };
+            let prio_badge = match todo.priority {
+                Priority::High => "[HIGH]",
+                Priority::Medium => "[MED]",
+                Priority::Low => "[LOW]",
+            };
+            out.push_str(&format!("- {check} {prio_badge} **{}**", todo.title));
+            if let Some(ref d) = todo.due_date {
+                out.push_str(&format!(" *(Due: {d})*"));
+            }
+            out.push('\n');
+            if let Some(ref desc) = todo.description {
+                if !desc.is_empty() {
+                    out.push_str(&format!("  ↳ {desc}\n"));
+                }
+            }
+        }
+        out
+    }
+
+    pub fn import_from_json(&mut self, json_str: &str) -> Result<usize, String> {
+        let items: Vec<TodoItem> =
+            serde_json::from_str(json_str).map_err(|e| format!("Invalid JSON format: {e}"))?;
+        let count = items.len();
+        for item in items {
+            let new_id = self.todos.iter().map(|t| t.id).max().unwrap_or(0) + 1;
+            let mut new_item = item;
+            new_item.id = new_id;
+            self.todos.push(new_item);
+        }
+        self.save_todos();
+        Ok(count)
+    }
+
     pub fn filtered_todos(&self) -> Vec<&TodoItem> {
         self.todos
             .iter()
@@ -240,15 +386,27 @@ impl TodoGuiApp {
 
 impl eframe::App for TodoGuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Catppuccin Macchiato styled dark theme
-        let mut visuals = egui::Visuals::dark();
-        visuals.override_text_color = Some(egui::Color32::from_rgb(205, 214, 244));
-        visuals.panel_fill = egui::Color32::from_rgb(24, 24, 37); // Base
-        visuals.window_fill = egui::Color32::from_rgb(30, 30, 46); // Mantle
-        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(30, 30, 46);
-        visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(49, 50, 68); // Surface0
-        visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(69, 71, 90); // Surface1
-        visuals.widgets.active.bg_fill = egui::Color32::from_rgb(137, 180, 250); // Blue
+        // Keyboard Shortcuts
+        if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::N)) {
+            self.show_add_dialog = true;
+        }
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.show_add_dialog = false;
+            self.editing_id = None;
+            self.show_export_dialog = false;
+            self.show_import_dialog = false;
+        }
+
+        // Apply Dynamic Theme
+        let is_dark = self.theme.is_dark();
+        let mut visuals = if is_dark {
+            egui::Visuals::dark()
+        } else {
+            egui::Visuals::light()
+        };
+        visuals.override_text_color = Some(self.theme.primary_text());
+        visuals.panel_fill = self.theme.bg();
+        visuals.window_fill = self.theme.top_panel_bg();
         ctx.set_visuals(visuals);
 
         let total = self.todos.len();
@@ -264,7 +422,7 @@ impl eframe::App for TodoGuiApp {
         egui::TopBottomPanel::top("header_panel")
             .frame(
                 egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(30, 30, 46))
+                    .fill(self.theme.top_panel_bg())
                     .inner_margin(egui::Margin::same(16)),
             )
             .show(ctx, |ui| {
@@ -288,6 +446,7 @@ impl eframe::App for TodoGuiApp {
                                     .color(egui::Color32::from_rgb(17, 17, 27))
                                     .strong(),
                             )
+                            .on_hover_text("Shortcut: Ctrl+N / Cmd+N")
                             .clicked()
                         {
                             self.show_add_dialog = !self.show_add_dialog;
@@ -303,6 +462,38 @@ impl eframe::App for TodoGuiApp {
                         {
                             self.clear_completed();
                         }
+
+                        if ui.button("📥 Export").clicked() {
+                            self.show_export_dialog = true;
+                        }
+
+                        if ui.button("📤 Import").clicked() {
+                            self.show_import_dialog = true;
+                        }
+
+                        egui::ComboBox::from_id_salt("theme_selector")
+                            .selected_text(match self.theme {
+                                GuiTheme::Macchiato => "🎨 Dark",
+                                GuiTheme::Latte => "☀️ Light",
+                                GuiTheme::HighContrast => "⬛ High Contrast",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.theme,
+                                    GuiTheme::Macchiato,
+                                    "🎨 Dark (Macchiato)",
+                                );
+                                ui.selectable_value(
+                                    &mut self.theme,
+                                    GuiTheme::Latte,
+                                    "☀️ Light (Latte)",
+                                );
+                                ui.selectable_value(
+                                    &mut self.theme,
+                                    GuiTheme::HighContrast,
+                                    "⬛ High Contrast",
+                                );
+                            });
                     });
                 });
 
@@ -337,10 +528,18 @@ impl eframe::App for TodoGuiApp {
 
                     ui.separator();
 
+                    let search_id = egui::Id::new("gui_search_input");
+                    if ctx.input(|i| !i.modifiers.command && i.key_pressed(egui::Key::Slash))
+                        && !ctx.wants_keyboard_input()
+                    {
+                        ui.memory_mut(|m| m.request_focus(search_id));
+                    }
+
                     ui.label("🔍");
                     ui.add(
                         egui::TextEdit::singleline(&mut self.search_query)
-                            .hint_text("Search tasks...")
+                            .id(search_id)
+                            .hint_text("Search tasks... [/]")
                             .desired_width(200.0),
                     );
 
@@ -354,16 +553,16 @@ impl eframe::App for TodoGuiApp {
         egui::TopBottomPanel::bottom("status_bar")
             .frame(
                 egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(17, 17, 27))
+                    .fill(self.theme.top_panel_bg())
                     .inner_margin(egui::Margin::symmetric(16, 8)),
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         egui::RichText::new(format!(
-                            "Active: {active}  |  Completed: {completed}  |  Total: {total}"
+                            "Active: {active}  |  Completed: {completed}  |  Total: {total}    •    [Ctrl+N] New Task  |  [/] Focus Search  |  [Esc] Close Dialogs"
                         ))
-                        .size(12.0)
+                        .size(11.0)
                         .color(egui::Color32::from_rgb(147, 153, 178)),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -380,14 +579,14 @@ impl eframe::App for TodoGuiApp {
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(24, 24, 37))
+                    .fill(self.theme.bg())
                     .inner_margin(egui::Margin::same(16)),
             )
             .show(ctx, |ui| {
                 // Add Task Dialog / Card
                 if self.show_add_dialog {
                     egui::Frame::new()
-                        .fill(egui::Color32::from_rgb(30, 30, 46))
+                        .fill(self.theme.card_bg(false))
                         .stroke(egui::Stroke::new(
                             1.0_f32,
                             egui::Color32::from_rgb(137, 180, 250),
@@ -591,22 +790,14 @@ impl eframe::App for TodoGuiApp {
                         .auto_shrink([false; 2])
                         .show(ui, |ui| {
                             for todo in filtered {
-                                let card_bg = if todo.completed {
-                                    egui::Color32::from_rgb(20, 20, 30)
-                                } else {
-                                    egui::Color32::from_rgb(30, 30, 46)
-                                };
+                                let card_bg = self.theme.card_bg(todo.completed);
 
                                 egui::Frame::new()
                                     .fill(card_bg)
                                     .corner_radius(egui::CornerRadius::same(8))
                                     .stroke(egui::Stroke::new(
                                         1.0_f32,
-                                        if todo.completed {
-                                            egui::Color32::from_rgb(49, 50, 68)
-                                        } else {
-                                            egui::Color32::from_rgb(69, 71, 90)
-                                        },
+                                        self.theme.card_border(todo.completed),
                                     ))
                                     .inner_margin(egui::Margin::symmetric(14, 10))
                                     .show(ui, |ui| {
@@ -729,6 +920,117 @@ impl eframe::App for TodoGuiApp {
                     }
                 }
             });
+
+        // Export Window Dialog
+        if self.show_export_dialog {
+            let mut close_export = false;
+            let export_str = if self.export_markdown {
+                self.export_to_markdown()
+            } else {
+                self.export_to_json()
+            };
+
+            egui::Window::new("📥 Export Tasks")
+                .collapsible(false)
+                .resizable(true)
+                .default_width(500.0)
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        if ui
+                            .selectable_label(!self.export_markdown, "JSON Format")
+                            .clicked()
+                        {
+                            self.export_markdown = false;
+                        }
+                        if ui
+                            .selectable_label(self.export_markdown, "Markdown Checklist")
+                            .clicked()
+                        {
+                            self.export_markdown = true;
+                        }
+                    });
+
+                    ui.add_space(8.0);
+                    let mut text_display = export_str.clone();
+                    ui.add(
+                        egui::TextEdit::multiline(&mut text_display)
+                            .desired_rows(12)
+                            .desired_width(f32::INFINITY)
+                            .font(egui::TextStyle::Monospace),
+                    );
+
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("📋 Copy to Clipboard").clicked() {
+                            ctx.copy_text(export_str);
+                        }
+                        if ui.button("Close").clicked() {
+                            close_export = true;
+                        }
+                    });
+                });
+
+            if close_export {
+                self.show_export_dialog = false;
+            }
+        }
+
+        // Import Window Dialog
+        if self.show_import_dialog {
+            let mut close_import = false;
+            let mut do_import = false;
+
+            egui::Window::new("📤 Import Tasks")
+                .collapsible(false)
+                .resizable(true)
+                .default_width(500.0)
+                .show(ctx, |ui| {
+                    ui.label("Paste JSON array of tasks below:");
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.import_text)
+                            .desired_rows(10)
+                            .desired_width(f32::INFINITY)
+                            .hint_text(r#"[{"title": "Sample Task", "priority": "high"}]"#)
+                            .font(egui::TextStyle::Monospace),
+                    );
+
+                    if let Some(ref msg) = self.import_status_message {
+                        ui.add_space(4.0);
+                        ui.label(
+                            egui::RichText::new(msg).color(egui::Color32::from_rgb(243, 139, 168)),
+                        );
+                    }
+
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("📥 Import Tasks").clicked() {
+                            do_import = true;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            close_import = true;
+                        }
+                    });
+                });
+
+            if do_import {
+                let to_import = self.import_text.clone();
+                match self.import_from_json(&to_import) {
+                    Ok(_count) => {
+                        self.import_status_message = None;
+                        self.import_text.clear();
+                        self.show_import_dialog = false;
+                    }
+                    Err(err) => {
+                        self.import_status_message = Some(err);
+                    }
+                }
+            }
+
+            if close_import {
+                self.show_import_dialog = false;
+                self.import_status_message = None;
+            }
+        }
     }
 }
 
@@ -747,4 +1049,52 @@ pub fn run_desktop(storage_path: PathBuf) -> eframe::Result<()> {
         native_options,
         Box::new(move |_cc| Ok(Box::new(TodoGuiApp::new(Some(storage_path))))),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_gui_export_json_and_markdown() {
+        let mut app = TodoGuiApp::new(None);
+        app.todos.clear();
+        app.todos.push(
+            TodoItem::new(
+                1,
+                "Buy Coffee".to_string(),
+                Some("Beans from roastery".to_string()),
+                Priority::High,
+            )
+            .with_due_date(Some("2026-11-30".to_string())),
+        );
+
+        let json = app.export_to_json();
+        assert!(json.contains("Buy Coffee"));
+        assert!(json.contains("2026-11-30"));
+
+        let md = app.export_to_markdown();
+        assert!(md.contains("# TaskMaster Export"));
+        assert!(md.contains("- [ ] [HIGH] **Buy Coffee**"));
+        assert!(md.contains("Due: 2026-11-30"));
+        assert!(md.contains("Beans from roastery"));
+    }
+
+    #[test]
+    fn test_gui_import_json() {
+        let mut app = TodoGuiApp::new(None);
+        app.todos.clear();
+
+        let json = r#"[
+            {"title": "Imported 1", "priority": "high", "completed": false, "created_at": "2026-01-01T00:00:00Z"},
+            {"title": "Imported 2", "priority": "low", "completed": true, "created_at": "2026-01-01T00:00:00Z"}
+        ]"#;
+
+        let count = app.import_from_json(json).expect("Import should succeed");
+        assert_eq!(count, 2);
+        assert_eq!(app.todos.len(), 2);
+        assert_eq!(app.todos[0].title, "Imported 1");
+        assert_eq!(app.todos[1].title, "Imported 2");
+        assert!(app.todos[1].completed);
+    }
 }
