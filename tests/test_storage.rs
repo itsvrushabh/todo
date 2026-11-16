@@ -23,6 +23,7 @@ fn test_storage_creation_and_crud() {
             priority: Some(Priority::High),
             due_date: Some("2026-12-31".to_string()),
             recurrence: None,
+            uuid: None,
         })
         .unwrap();
     assert_eq!(created.id, 1);
@@ -30,6 +31,7 @@ fn test_storage_creation_and_crud() {
     assert_eq!(created.priority, Priority::High);
     assert_eq!(created.due_date, Some("2026-12-31".to_string()));
     assert!(!created.completed);
+    assert!(created.uuid.is_some());
 
     // 3. Get by ID
     let fetched = storage.get_by_id(1).unwrap().expect("Item should exist");
@@ -48,6 +50,7 @@ fn test_storage_creation_and_crud() {
                 priority: Some(Priority::Low),
                 due_date: Some("2027-01-01".to_string()),
                 recurrence: None,
+                uuid: None,
             },
         )
         .unwrap()
@@ -86,6 +89,7 @@ fn test_filtering_and_search() {
             priority: Some(Priority::High),
             due_date: None,
             recurrence: None,
+            uuid: None,
         })
         .unwrap();
 
@@ -96,6 +100,7 @@ fn test_filtering_and_search() {
             priority: Some(Priority::Medium),
             due_date: None,
             recurrence: None,
+            uuid: None,
         })
         .unwrap();
 
@@ -106,6 +111,7 @@ fn test_filtering_and_search() {
             priority: Some(Priority::Low),
             due_date: None,
             recurrence: None,
+            uuid: None,
         })
         .unwrap();
     storage.toggle(task3.id).unwrap();
@@ -146,6 +152,7 @@ fn test_concurrent_access() {
                     priority: Some(Priority::Medium),
                     due_date: None,
                     recurrence: None,
+                    uuid: None,
                 })
                 .unwrap();
         }));
@@ -172,6 +179,7 @@ fn test_recurring_task_toggle() {
             priority: Some(Priority::High),
             due_date: Some("2026-01-01".to_string()),
             recurrence: Some(todo::models::RecurrencePattern::Daily),
+            uuid: None,
         })
         .unwrap();
 
@@ -204,6 +212,7 @@ fn test_poisoned_lock_recovery() {
             priority: Some(Priority::Medium),
             due_date: None,
             recurrence: None,
+            uuid: None,
         })
         .unwrap();
     assert_eq!(created.id, 1);
@@ -226,8 +235,62 @@ fn test_poisoned_lock_recovery() {
             priority: Some(Priority::High),
             due_date: None,
             recurrence: None,
+            uuid: None,
         })
         .expect("Write should recover gracefully from poisoned lock");
     assert_eq!(second.id, 2);
     assert_eq!(second.title, "Post-poison Task");
+}
+
+#[test]
+fn test_storage_uuid_generation_and_lookup() {
+    let dir = tempdir().unwrap();
+    let file_path = dir.path().join("todos_uuid.json");
+    let storage = JsonTodoStorage::new(&file_path).unwrap();
+
+    // 1. Creation generates a UUID automatically when None is passed
+    let auto = storage
+        .create(TodoCreate {
+            title: "Auto UUID task".to_string(),
+            description: None,
+            priority: Some(Priority::Medium),
+            due_date: None,
+            recurrence: None,
+            uuid: None,
+        })
+        .unwrap();
+    assert!(auto.uuid.is_some());
+    let auto_uuid = auto.uuid.clone().unwrap();
+
+    // Lookup by UUID
+    let fetched = storage
+        .get_by_uuid(&auto_uuid)
+        .unwrap()
+        .expect("Should find by UUID");
+    assert_eq!(fetched.id, auto.id);
+    assert_eq!(fetched.title, "Auto UUID task");
+
+    // 2. Client-provided UUID is preserved
+    let client_uuid = "client-gen-uuid-12345".to_string();
+    let client_task = storage
+        .create(TodoCreate {
+            title: "Client UUID task".to_string(),
+            description: None,
+            priority: Some(Priority::High),
+            due_date: None,
+            recurrence: None,
+            uuid: Some(client_uuid.clone()),
+        })
+        .unwrap();
+    assert_eq!(client_task.uuid.as_deref(), Some(client_uuid.as_str()));
+
+    let fetched_client = storage
+        .get_by_uuid(&client_uuid)
+        .unwrap()
+        .expect("Should find client UUID");
+    assert_eq!(fetched_client.id, client_task.id);
+
+    // 3. Lookup non-existent UUID returns None
+    let missing = storage.get_by_uuid("non-existent-uuid").unwrap();
+    assert!(missing.is_none());
 }

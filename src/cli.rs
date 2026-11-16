@@ -157,6 +157,7 @@ pub fn add_todo(
         priority,
         due_date,
         recurrence,
+        uuid: None,
     })?;
     let rec_msg = item
         .recurrence
