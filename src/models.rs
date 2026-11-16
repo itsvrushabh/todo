@@ -123,6 +123,38 @@ pub struct TodoItem {
     pub due_date: Option<String>,
     #[serde(default)]
     pub recurrence: Option<RecurrencePattern>,
+    #[serde(default)]
+    pub estimated_minutes: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimeBudgetFilter {
+    #[default]
+    All,
+    QuickWins,
+    ShortSession,
+    DeepWork,
+}
+
+impl TimeBudgetFilter {
+    pub fn matches(&self, minutes: u32) -> bool {
+        match self {
+            TimeBudgetFilter::All => true,
+            TimeBudgetFilter::QuickWins => minutes <= 15,
+            TimeBudgetFilter::ShortSession => minutes <= 30,
+            TimeBudgetFilter::DeepWork => minutes > 30,
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            TimeBudgetFilter::All => "All Durations",
+            TimeBudgetFilter::QuickWins => "⚡ Quick Wins (≤15m)",
+            TimeBudgetFilter::ShortSession => "⏱️ Short (≤30m)",
+            TimeBudgetFilter::DeepWork => "🎯 Deep Work (>30m)",
+        }
+    }
 }
 
 impl TodoItem {
@@ -138,6 +170,54 @@ impl TodoItem {
             updated_at: None,
             due_date: None,
             recurrence: None,
+            estimated_minutes: None,
+        }
+    }
+
+    pub fn parse_duration_str(s: &str) -> Option<u32> {
+        let lower = s.to_lowercase();
+        for word in lower.split_whitespace() {
+            let clean = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '~');
+            let clean = clean.trim_start_matches('~');
+            if clean.ends_with("mins") || clean.ends_with("min") {
+                let num = clean.trim_end_matches("mins").trim_end_matches("min");
+                if let Ok(m) = num.parse::<u32>() {
+                    return Some(m);
+                }
+            } else if clean.ends_with('m') {
+                let num = clean.trim_end_matches('m');
+                if let Ok(m) = num.parse::<u32>() {
+                    return Some(m);
+                }
+            } else if clean.ends_with("hrs") || clean.ends_with("hr") || clean.ends_with('h') {
+                let num = clean
+                    .trim_end_matches("hrs")
+                    .trim_end_matches("hr")
+                    .trim_end_matches('h');
+                if let Ok(h) = num.parse::<u32>() {
+                    return Some(h * 60);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn effective_estimated_minutes(&self) -> u32 {
+        if let Some(m) = self.estimated_minutes {
+            return m;
+        }
+        if let Some(m) = Self::parse_duration_str(&self.title) {
+            return m;
+        }
+        if let Some(ref desc) = self.description {
+            if let Some(m) = Self::parse_duration_str(desc) {
+                return m;
+            }
+        }
+        match self.priority {
+            Priority::Low => 15,
+            Priority::Medium => 30,
+            Priority::High => 60,
         }
     }
 
@@ -326,6 +406,45 @@ mod tests {
         item.recurrence = Some(RecurrencePattern::Daily);
         let next_from_overdue = item.next_recurrence_date().unwrap();
         assert_eq!(next_from_overdue, expected);
+    }
+
+    #[test]
+    fn test_parse_duration_and_time_budget() {
+        assert_eq!(TodoItem::parse_duration_str("Fix typo 15m"), Some(15));
+        assert_eq!(
+            TodoItem::parse_duration_str("Refactor auth [30min]"),
+            Some(30)
+        );
+        assert_eq!(TodoItem::parse_duration_str("Deep focus (~1h)"), Some(60));
+        assert_eq!(
+            TodoItem::parse_duration_str("Long workshop [2hrs]"),
+            Some(120)
+        );
+        assert_eq!(TodoItem::parse_duration_str("Plain task title"), None);
+
+        // Priority fallback heuristic
+        let low_task = TodoItem::new(1, "Low task".into(), None, Priority::Low);
+        assert_eq!(low_task.effective_estimated_minutes(), 15);
+
+        let med_task = TodoItem::new(2, "Med task".into(), None, Priority::Medium);
+        assert_eq!(med_task.effective_estimated_minutes(), 30);
+
+        let high_task = TodoItem::new(3, "High task".into(), None, Priority::High);
+        assert_eq!(high_task.effective_estimated_minutes(), 60);
+
+        // Explicit duration overrides priority
+        let mut custom = TodoItem::new(4, "High task quick fix".into(), None, Priority::High);
+        custom.estimated_minutes = Some(10);
+        assert_eq!(custom.effective_estimated_minutes(), 10);
+
+        // TimeBudgetFilter matching
+        assert!(TimeBudgetFilter::QuickWins.matches(15));
+        assert!(!TimeBudgetFilter::QuickWins.matches(16));
+        assert!(TimeBudgetFilter::ShortSession.matches(30));
+        assert!(!TimeBudgetFilter::ShortSession.matches(31));
+        assert!(TimeBudgetFilter::DeepWork.matches(45));
+        assert!(!TimeBudgetFilter::DeepWork.matches(25));
+        assert!(TimeBudgetFilter::All.matches(120));
     }
 
     #[test]
