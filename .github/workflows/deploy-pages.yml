@@ -45,7 +45,7 @@ jobs:
           cp -r target/doc/* dist/docs/
 
       - name: Set up GitHub Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
