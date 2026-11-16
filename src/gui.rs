@@ -1,4 +1,4 @@
-use crate::models::{Priority, TodoItem};
+use crate::models::{Priority, TimeBudgetFilter, TodoItem};
 use chrono::Utc;
 use eframe::egui;
 use serde::{Deserialize, Serialize};
@@ -147,6 +147,9 @@ pub struct TodoGuiApp {
     pub calm_spotlight_idx: usize,
     pub desktop_board_view: bool,
     pub mobile_compact_meta: bool,
+    pub time_budget: TimeBudgetFilter,
+    pub planning_scratchpad: String,
+    pub show_planning_scratchpad: bool,
     pub show_export_dialog: bool,
     pub export_markdown: bool,
     pub show_import_dialog: bool,
@@ -239,6 +242,9 @@ impl TodoGuiApp {
             calm_spotlight_idx: 0,
             desktop_board_view: true,
             mobile_compact_meta: true,
+            time_budget: TimeBudgetFilter::default(),
+            planning_scratchpad: String::new(),
+            show_planning_scratchpad: true,
             show_export_dialog: false,
             export_markdown: false,
             show_import_dialog: false,
@@ -267,6 +273,12 @@ impl TodoGuiApp {
                         {
                             self.pending_mutations = mutations;
                         }
+                    }
+                }
+                let scratchpad_path = path.with_extension("scratchpad.txt");
+                if scratchpad_path.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&scratchpad_path) {
+                        self.planning_scratchpad = content;
                     }
                 }
                 if path.exists() {
@@ -302,6 +314,9 @@ impl TodoGuiApp {
                             self.todos = items;
                             return;
                         }
+                    }
+                    if let Ok(Some(content)) = storage.get_item("taskmaster_scratchpad") {
+                        self.planning_scratchpad = content;
                     }
                 }
             }
@@ -349,6 +364,9 @@ impl TodoGuiApp {
                     }
                     let _ = std::fs::write(path, json);
                 }
+
+                let scratchpad_path = path.with_extension("scratchpad.txt");
+                let _ = std::fs::write(&scratchpad_path, &self.planning_scratchpad);
             }
         }
 
@@ -363,6 +381,7 @@ impl TodoGuiApp {
                     if let Ok(json) = serde_json::to_string(&self.pending_mutations) {
                         let _ = storage.set_item("taskmaster_pending_mutations", &json);
                     }
+                    let _ = storage.set_item("taskmaster_scratchpad", &self.planning_scratchpad);
                 }
             }
         }
@@ -693,6 +712,7 @@ impl TodoGuiApp {
                 FilterStatus::Active => !todo.completed,
                 FilterStatus::Completed => todo.completed,
             })
+            .filter(|todo| self.time_budget.matches(todo.effective_estimated_minutes()))
             .filter(|todo| {
                 if self.search_query.trim().is_empty() {
                     true
@@ -708,6 +728,67 @@ impl TodoGuiApp {
                 }
             })
             .collect()
+    }
+
+    pub fn convert_scratchpad_to_tasks(&mut self) -> usize {
+        let mut added_count = 0;
+        let mut new_items = Vec::new();
+
+        for line in self.planning_scratchpad.lines() {
+            let trimmed = line.trim();
+            let clean = trimmed
+                .trim_start_matches("- [ ]")
+                .trim_start_matches("- [x]")
+                .trim_start_matches("- ")
+                .trim_start_matches("* ")
+                .trim_start_matches("• ")
+                .trim();
+
+            if !clean.is_empty() {
+                let next_id = self
+                    .todos
+                    .iter()
+                    .map(|t| t.id)
+                    .chain(new_items.iter().map(|t: &TodoItem| t.id))
+                    .max()
+                    .unwrap_or(0)
+                    + 1;
+                let duration = TodoItem::parse_duration_str(clean);
+                let item = TodoItem {
+                    id: next_id,
+                    title: clean.to_string(),
+                    description: None,
+                    priority: Priority::Medium,
+                    completed: false,
+                    created_at: Utc::now().to_rfc3339(),
+                    updated_at: None,
+                    due_date: None,
+                    recurrence: None,
+                    estimated_minutes: duration,
+                };
+                if !self.server_url.trim().is_empty() {
+                    self.pending_mutations
+                        .push(crate::models::PendingMutation::Create(
+                            crate::models::TodoCreate {
+                                title: item.title.clone(),
+                                description: None,
+                                priority: Some(item.priority),
+                                due_date: None,
+                                recurrence: None,
+                            },
+                        ));
+                }
+                new_items.push(item);
+                added_count += 1;
+            }
+        }
+
+        if added_count > 0 {
+            self.todos.extend(new_items);
+            self.planning_scratchpad.clear();
+            self.save_todos();
+        }
+        added_count
     }
 
     pub fn update_priority(&mut self, id: i64, new_priority: Priority) {
@@ -1099,6 +1180,26 @@ impl eframe::App for TodoGuiApp {
 
                     ui.separator();
 
+                    ui.label("⏱️ Time:");
+                    ui.selectable_value(&mut self.time_budget, TimeBudgetFilter::All, "All");
+                    ui.selectable_value(
+                        &mut self.time_budget,
+                        TimeBudgetFilter::QuickWins,
+                        "⚡ Quick (≤15m)",
+                    );
+                    ui.selectable_value(
+                        &mut self.time_budget,
+                        TimeBudgetFilter::ShortSession,
+                        "⏱️ Short (≤30m)",
+                    );
+                    ui.selectable_value(
+                        &mut self.time_budget,
+                        TimeBudgetFilter::DeepWork,
+                        "🎯 Deep (>30m)",
+                    );
+
+                    ui.separator();
+
                     let search_id = egui::Id::new("gui_search_input");
                     if ctx.input(|i| !i.modifiers.command && i.key_pressed(egui::Key::Slash))
                         && !ctx.wants_keyboard_input()
@@ -1475,11 +1576,91 @@ impl eframe::App for TodoGuiApp {
                                             if ui.button(btn_label).clicked() {
                                                 self.desktop_board_view = !self.desktop_board_view;
                                             }
+                                            let scratchpad_btn = if self.show_planning_scratchpad {
+                                                "📝 Hide Scratchpad"
+                                            } else {
+                                                "📝 Open Scratchpad"
+                                            };
+                                            if ui.button(scratchpad_btn).clicked() {
+                                                self.show_planning_scratchpad =
+                                                    !self.show_planning_scratchpad;
+                                            }
                                         },
                                     );
                                 });
                             });
                         ui.add_space(8.0);
+
+                        if self.show_planning_scratchpad {
+                            let mut convert_now = false;
+                            egui::Frame::new()
+                                .fill(self.theme.card_bg(false))
+                                .corner_radius(egui::CornerRadius::same(8))
+                                .stroke(egui::Stroke::new(
+                                    1.0_f32,
+                                    self.theme.card_border(false),
+                                ))
+                                .inner_margin(egui::Margin::symmetric(14, 10))
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            egui::RichText::new("📝 Session Planning Scratchpad")
+                                                .strong()
+                                                .size(12.5)
+                                                .color(egui::Color32::from_rgb(137, 180, 250)),
+                                        );
+                                        ui.separator();
+                                        ui.label(
+                                            egui::RichText::new(
+                                                "Draft session thoughts, break down goals, or stage priorities",
+                                            )
+                                            .size(11.0)
+                                            .color(egui::Color32::from_rgb(166, 173, 200)),
+                                        );
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                if ui
+                                                    .button("✕")
+                                                    .on_hover_text("Close scratchpad")
+                                                    .clicked()
+                                                {
+                                                    self.show_planning_scratchpad = false;
+                                                }
+                                                if ui
+                                                    .button("➕ Convert Lines to Tasks")
+                                                    .on_hover_text(
+                                                        "Convert bullet points or lines into actual tasks",
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    convert_now = true;
+                                                }
+                                                if !self.planning_scratchpad.is_empty()
+                                                    && ui.button("🗑️ Clear").clicked()
+                                                {
+                                                    self.planning_scratchpad.clear();
+                                                    self.save_todos();
+                                                }
+                                            },
+                                        );
+                                    });
+                                    ui.add_space(6.0);
+                                    let response = ui.add(
+                                        egui::TextEdit::multiline(&mut self.planning_scratchpad)
+                                            .hint_text("• Write session goals or task breakdown\n• Quick fix [15m]\n• Implement feature [1h]")
+                                            .desired_rows(4)
+                                            .desired_width(f32::INFINITY),
+                                    );
+                                    if response.changed() {
+                                        self.save_todos();
+                                    }
+                                });
+                            if convert_now {
+                                self.convert_scratchpad_to_tasks();
+                            }
+                            ui.add_space(8.0);
+                        }
                     }
                     AdaptiveMode::MobileFocus => {
                         egui::Frame::new()
@@ -1723,6 +1904,21 @@ impl eframe::App for TodoGuiApp {
                                                         );
                                                     }
 
+                                                    let est_mins =
+                                                        todo.effective_estimated_minutes();
+                                                    let est_txt = if est_mins >= 60 {
+                                                        format!("⏱️ {}h", est_mins / 60)
+                                                    } else {
+                                                        format!("⏱️ {}m", est_mins)
+                                                    };
+                                                    ui.label(
+                                                        egui::RichText::new(est_txt)
+                                                            .size(10.5)
+                                                            .color(egui::Color32::from_rgb(
+                                                                180, 190, 254,
+                                                            )),
+                                                    );
+
                                                     ui.add_space(4.0);
                                                     ui.horizontal(|ui| {
                                                         if !is_done_col {
@@ -1935,6 +2131,21 @@ impl eframe::App for TodoGuiApp {
                                                                     .strong(),
                                                             );
                                                         }
+
+                                                        let est_mins =
+                                                            todo.effective_estimated_minutes();
+                                                        let est_txt = if est_mins >= 60 {
+                                                            format!("⏱️ {}h", est_mins / 60)
+                                                        } else {
+                                                            format!("⏱️ {}m", est_mins)
+                                                        };
+                                                        ui.label(
+                                                            egui::RichText::new(est_txt)
+                                                                .size(11.0)
+                                                                .color(egui::Color32::from_rgb(
+                                                                    180, 190, 254,
+                                                                )),
+                                                        );
                                                     });
 
                                                     // Right Touch Action Buttons
@@ -2279,6 +2490,21 @@ impl eframe::App for TodoGuiApp {
                                                                     .strong(),
                                                             );
                                                         }
+
+                                                        let est_mins =
+                                                            todo.effective_estimated_minutes();
+                                                        let est_txt = if est_mins >= 60 {
+                                                            format!("⏱️ {}h", est_mins / 60)
+                                                        } else {
+                                                            format!("⏱️ {}m", est_mins)
+                                                        };
+                                                        ui.label(
+                                                            egui::RichText::new(est_txt)
+                                                                .size(11.0)
+                                                                .color(egui::Color32::from_rgb(
+                                                                    180, 190, 254,
+                                                                )),
+                                                        );
                                                     });
 
                                                     // Action Buttons (Right-aligned)
@@ -2720,6 +2946,7 @@ mod tests {
                 priority: Priority::Low,
                 due_date: None,
                 recurrence: None,
+                estimated_minutes: None,
                 created_at: Utc::now().to_rfc3339(),
                 updated_at: None,
             },
@@ -2731,6 +2958,7 @@ mod tests {
                 priority: Priority::High,
                 due_date: None,
                 recurrence: None,
+                estimated_minutes: None,
                 created_at: Utc::now().to_rfc3339(),
                 updated_at: None,
             },
@@ -2742,6 +2970,7 @@ mod tests {
                 priority: Priority::High,
                 due_date: None,
                 recurrence: None,
+                estimated_minutes: None,
                 created_at: Utc::now().to_rfc3339(),
                 updated_at: None,
             },
@@ -2753,6 +2982,7 @@ mod tests {
                 priority: Priority::Medium,
                 due_date: None,
                 recurrence: None,
+                estimated_minutes: None,
                 created_at: Utc::now().to_rfc3339(),
                 updated_at: None,
             },
@@ -2778,6 +3008,7 @@ mod tests {
             priority: Priority::Medium,
             due_date: None,
             recurrence: None,
+            estimated_minutes: None,
             created_at: Utc::now().to_rfc3339(),
             updated_at: None,
         }];
@@ -2807,6 +3038,7 @@ mod tests {
                 priority: Priority::Medium,
                 due_date: None,
                 recurrence: None,
+                estimated_minutes: None,
                 created_at: Utc::now().to_rfc3339(),
                 updated_at: None,
             },
@@ -2818,6 +3050,7 @@ mod tests {
                 priority: Priority::Low,
                 due_date: None,
                 recurrence: None,
+                estimated_minutes: None,
                 created_at: Utc::now().to_rfc3339(),
                 updated_at: None,
             },
@@ -2828,5 +3061,92 @@ mod tests {
         let active_count = app.todos.iter().filter(|t| !t.completed).count();
         let clamped = app.calm_spotlight_idx.min(active_count.saturating_sub(1));
         assert_eq!(clamped, 1);
+    }
+
+    #[test]
+    fn test_convert_scratchpad_to_tasks() {
+        let mut app = TodoGuiApp::new(None);
+        app.todos.clear();
+        app.planning_scratchpad = r#"
+- [ ] Brainstorm features
+- Implement OAuth provider [1h]
+* Quick bug fix [15m]
+• Draft documentation
+"#
+        .to_string();
+
+        let count = app.convert_scratchpad_to_tasks();
+        assert_eq!(count, 4);
+        assert_eq!(app.todos.len(), 4);
+        assert_eq!(app.todos[0].title, "Brainstorm features");
+        assert_eq!(app.todos[1].title, "Implement OAuth provider [1h]");
+        assert_eq!(app.todos[1].estimated_minutes, Some(60));
+        assert_eq!(app.todos[2].title, "Quick bug fix [15m]");
+        assert_eq!(app.todos[2].estimated_minutes, Some(15));
+        assert_eq!(app.todos[3].title, "Draft documentation");
+        assert!(app.planning_scratchpad.is_empty());
+    }
+
+    #[test]
+    fn test_time_budget_gui_filtering() {
+        let mut app = TodoGuiApp::new(None);
+        app.todos = vec![
+            TodoItem {
+                id: 1,
+                title: "Quick win".into(),
+                description: None,
+                completed: false,
+                priority: Priority::Low, // default 15m
+                due_date: None,
+                recurrence: None,
+                estimated_minutes: None,
+                created_at: Utc::now().to_rfc3339(),
+                updated_at: None,
+            },
+            TodoItem {
+                id: 2,
+                title: "Deep work task".into(),
+                description: None,
+                completed: false,
+                priority: Priority::High, // default 60m
+                due_date: None,
+                recurrence: None,
+                estimated_minutes: None,
+                created_at: Utc::now().to_rfc3339(),
+                updated_at: None,
+            },
+        ];
+
+        // All filter
+        app.time_budget = TimeBudgetFilter::All;
+        assert_eq!(app.filtered_todos().len(), 2);
+
+        // QuickWins filter
+        app.time_budget = TimeBudgetFilter::QuickWins;
+        let quick = app.filtered_todos();
+        assert_eq!(quick.len(), 1);
+        assert_eq!(quick[0].id, 1);
+
+        // DeepWork filter
+        app.time_budget = TimeBudgetFilter::DeepWork;
+        let deep = app.filtered_todos();
+        assert_eq!(deep.len(), 1);
+        assert_eq!(deep[0].id, 2);
+    }
+
+    #[test]
+    fn test_scratchpad_persistence() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("todos.json");
+
+        let mut app = TodoGuiApp::new(Some(file_path.clone()));
+        app.planning_scratchpad = "Session Goal: Finish Stage 3 testing".to_string();
+        app.save_todos();
+
+        let reloaded = TodoGuiApp::new(Some(file_path));
+        assert_eq!(
+            reloaded.planning_scratchpad,
+            "Session Goal: Finish Stage 3 testing"
+        );
     }
 }
