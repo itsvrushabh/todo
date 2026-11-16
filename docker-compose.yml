@@ -1,0 +1,19 @@
+services:
+  todo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: taskmaster-todo:latest
+    container_name: taskmaster-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - TODO_STORAGE_PATH=/data/todos.json
+      - RUST_LOG=info
+    volumes:
+      - todo-data:/data
+
+volumes:
+  todo-data:
+    driver: local

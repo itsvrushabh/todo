@@ -1,0 +1,27 @@
+name: PR Issue Link Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  verify-linked-issue:
+    name: Verify Linked Issue
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for linked issue in PR body
+        run: |
+          BODY="${{ github.event.pull_request.body }}"
+          if echo "$BODY" | grep -Ei "(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved) #[0-9]+"; then
+            echo "✅ PR links to a valid issue reference!"
+            exit 0
+          else
+            echo "⚠️ Warning: No linked issue found in the PR description."
+            echo "Please link an issue using keywords such as 'Fixes #<number>' or 'Closes #<number>'."
+            # Allow bot PRs (like dependabot or automated releases)
+            if [ "${{ github.actor }}" = "dependabot[bot]" ] || [ "${{ github.actor }}" = "github-actions[bot]" ]; then
+              echo "Automated bot PR. Skipping enforcement."
+              exit 0
+            fi
+            exit 1
+          fi
