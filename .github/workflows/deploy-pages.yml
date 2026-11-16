@@ -28,18 +28,30 @@ jobs:
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
 
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
+
+      - name: Install Trunk
+        run: |
+          gh release download -R trunk-rs/trunk -p "trunk-x86_64-unknown-linux-gnu.tar.gz" -O - | sudo tar -xz -C /usr/local/bin
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build WebAssembly Web App
+        run: trunk build --release
 
       - name: Generate Rust API Documentation
         run: cargo doc --no-deps --lib
 
       - name: Assemble GitHub Pages distribution
         run: |
-          mkdir -p dist
-          # Copy frontend PWA assets
-          cp -r static/* dist/
+          # Ensure icons and PWA manifests are in dist
+          cp -r static/icons dist/ || true
+          cp static/manifest.json dist/ || true
+          cp static/sw.js dist/ || true
           # Copy Rust documentation
           mkdir -p dist/docs
           cp -r target/doc/* dist/docs/

@@ -9,21 +9,39 @@ readme = "README.md"
 repository = "https://github.com/itsvrushabh/todo"
 
 [dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1.43", features = ["full"] }
 axum = { version = "0.8", features = ["json", "query"] }
 tower-http = { version = "0.7", features = ["cors", "trace", "fs"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 ratatui = "0.29"
 crossterm = "0.29"
-chrono = { version = "0.4", features = ["serde"] }
 rust-embed = { version = "8.5", features = ["mime-guess"] }
 mime_guess = "2.0"
 qrcode = { version = "0.14", default-features = false }
 local-ip-address = "0.6"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "web_screen_reader"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["Window", "Document", "HtmlCanvasElement", "Storage"] }
+console_error_panic_hook = "0.1"
+
+[[bin]]
+name = "todo"
+path = "src/main.rs"
+
+[[bin]]
+name = "todo-web"
+path = "src/web_main.rs"
 
 [dev-dependencies]
 tempfile = "3.16"

@@ -38,6 +38,8 @@ pub enum Commands {
     },
     /// Launch the interactive Terminal User Interface (TUI)
     Tui,
+    /// Launch the native Desktop Graphical User Interface (GUI)
+    Gui,
     /// List all tasks with optional filters
     List {
         #[arg(short, long, help = "Filter by status: active or completed")]

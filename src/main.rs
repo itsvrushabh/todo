@@ -1,11 +1,19 @@
+#[cfg(not(target_arch = "wasm32"))]
 use clap::Parser;
+#[cfg(not(target_arch = "wasm32"))]
 use std::env;
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc;
+#[cfg(not(target_arch = "wasm32"))]
 use todo::cli::{self, Cli, Commands};
+#[cfg(not(target_arch = "wasm32"))]
 use todo::server::run_server;
+#[cfg(not(target_arch = "wasm32"))]
 use todo::storage::JsonTodoStorage;
+#[cfg(not(target_arch = "wasm32"))]
 use todo::tui::run_tui;
 
+#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
@@ -24,6 +32,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::Tui) => {
             run_tui(storage)?;
+        }
+        Some(Commands::Gui) => {
+            todo::gui::run_desktop(std::path::PathBuf::from(&storage_path))
+                .map_err(|e| format!("Failed to run GUI: {e}"))?;
         }
         Some(Commands::List {
             status,
@@ -64,3 +76,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[cfg(target_arch = "wasm32")]
+fn main() {}
