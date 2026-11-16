@@ -222,7 +222,9 @@ fn run_app<B: ratatui::backend::Backend>(
     app: &mut TuiApp,
 ) -> io::Result<()> {
     loop {
-        terminal.draw(|f| ui(f, app))?;
+        terminal
+            .draw(|f| ui(f, app))
+            .map_err(|e| io::Error::other(e.to_string()))?;
 
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
