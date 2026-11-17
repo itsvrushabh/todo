@@ -13,7 +13,7 @@ if ! rustup target list | grep -q "${TARGET} (installed)"; then
     rustup target add "${TARGET}"
 fi
 
-cargo build --release --target "${TARGET}"
+cargo build --release --target "${TARGET}" --lib
 
 BUNDLE_DIR="target/ios/Todo.app"
 mkdir -p "${BUNDLE_DIR}"

@@ -35,7 +35,7 @@ chrono = { version = "0.4", features = ["serde"] }
 ehttp = "0.7.3"
 uuid = { version = "1", features = ["v4", "serde", "js"] }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(any(target_arch = "wasm32", target_os = "ios")))'.dependencies]
 tokio = { version = "1.43", features = ["full"] }
 axum = { version = "0.8", features = ["json", "query"] }
 tower-http = { version = "0.7", features = ["cors", "trace", "fs"] }
@@ -51,6 +51,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 rusqlite = { version = "0.32", features = ["bundled"], optional = true }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+eframe = { version = "0.31", default-features = false, features = ["default_fonts"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "web_screen_reader"] }
