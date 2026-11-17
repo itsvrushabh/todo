@@ -17,7 +17,8 @@ Todo runs seamlessly as an **interactive terminal UI (TUI)**, a **native desktop
 ## ✨ Features
 
 - 🦀 **100% Pure Rust & Zero JavaScript**: Complete frontend and backend written in Rust 2021 with zero JavaScript code (`git ls-files '*.js'` = 0).
-- 🖥️ **Native Desktop Window**: Standalone GPU-accelerated desktop GUI on Linux, Windows, or macOS with `cargo run -- gui` powered by `egui`/`eframe`.
+- 🖥️ **Native Desktop Window & Packaging**: Standalone GPU-accelerated desktop GUI on Linux, Windows, or macOS with `cargo run -- gui` powered by `egui`/`eframe`, with Debian `.deb`, macOS `.app`, and `.desktop` launchers.
+- 📱 **Pure Rust Native Mobile (Android & iOS)**: 100% Rust Android APK via `android.app.NativeActivity` (`cargo-apk`) and iOS staticlib/app bundle with zero JavaScript.
 - ⟲ **GUI Undo / Redo History**: 50-step circular snapshot history with `Ctrl+Z` / `Cmd+Z` (Undo) and `Ctrl+Y` / `Cmd+Shift+Z` (Redo) plus header controls.
 - 🏷️ **Hierarchical Subtasks & #Tag Taxonomy**: Nested subtasks with progress tracking (`2/5 completed`), automatic `#hashtag` parsing from titles/descriptions, and multi-tag filtering chips.
 - 🔄 **Two-Way Differential Sync & Tombstones**: Offline-resilient sync engine with deletion tombstones, deterministic Last-Write-Wins (LWW) conflict resolution, and `GET /api/sync?since=...` differential endpoints.

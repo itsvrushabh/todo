@@ -8,9 +8,25 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/itsvrushabh/todo"
 
+[lib]
+crate-type = ["cdylib", "rlib", "staticlib"]
+
+[package.metadata.android]
+package = "io.github.itsvrushabh.todo"
+apk_name = "todo"
+label = "Todo"
+assets = "static"
+icon = "static/icons/icon-512.png"
+build_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+
+[package.metadata.android.sdk]
+min_sdk_version = 24
+target_sdk_version = 34
+
 [features]
 default = []
 sqlite = ["dep:rusqlite"]
+android = ["eframe/android-native-activity"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -19,7 +35,7 @@ chrono = { version = "0.4", features = ["serde"] }
 ehttp = "0.7.3"
 uuid = { version = "1", features = ["v4", "serde", "js"] }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(any(target_arch = "wasm32", target_os = "ios")))'.dependencies]
 tokio = { version = "1.43", features = ["full"] }
 axum = { version = "0.8", features = ["json", "query"] }
 tower-http = { version = "0.7", features = ["cors", "trace", "fs"] }
@@ -35,6 +51,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 rusqlite = { version = "0.32", features = ["bundled"], optional = true }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "wgpu"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "web_screen_reader"] }

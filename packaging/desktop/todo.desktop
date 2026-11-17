@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Todo
+GenericName=Task Manager
+Comment=High-performance cross-platform Todo and Task Management
+Exec=todo gui
+Icon=todo
+Terminal=false
+Type=Application
+Categories=Office;ProjectManagement;Utility;
+Keywords=todo;task;project;planning;calm;notes;
+StartupNotify=true
+StartupWMClass=todo
