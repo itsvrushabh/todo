@@ -1,7 +1,7 @@
 # Maintainer: Todo Contributors <https://github.com/itsvrushabh/todo>
 pkgname=todo-bin
 _pkgname=todo
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="High-performance cross-platform Todo app with Web, TUI, CLI, and GUI (pre-built binary)"
 arch=('x86_64' 'aarch64')
