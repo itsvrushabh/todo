@@ -53,7 +53,7 @@ eframe = { version = "0.31", default-features = false, features = ["default_font
 rusqlite = { version = "0.32", features = ["bundled"], optional = true }
 
 [target.'cfg(target_os = "ios")'.dependencies]
-eframe = { version = "0.31", default-features = false, features = ["default_fonts"] }
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "wgpu"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "web_screen_reader"] }
