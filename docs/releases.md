@@ -43,6 +43,7 @@ flowchart TD
 | Workflow | Path | Purpose |
 |---|---|---|
 | **CI Matrix** | `.github/workflows/ci.yml` | Validates `cargo fmt`, `clippy -D warnings`, `cargo test`, and security audit on Ubuntu, Windows, and macOS. |
+| **Release Binaries** | `.github/workflows/release-builds.yml` | Builds release artifacts for Linux (x86_64, aarch64), macOS (Intel, Apple Silicon), Windows (x86_64), and WASM with SHA256 checksums, and publishes to GitHub Releases, AUR, and Homebrew. |
 | **Gemini AI PR Reviewer** | `.github/workflows/gemini-pr-review.yml` | Analyzes pull request diffs using Google Gemini AI (`gemini-3.8-flash`) and posts automated code reviews. |
 | **Deploy GitHub Pages** | `.github/workflows/deploy-pages.yml` | Builds and deploys the live web client demo and rustdoc documentation on pushes to `main`. |
 | **Dependency Update Bot** | `.github/workflows/dependency-update.yml` | Weekly automated `cargo update` with test verification and automated PR creation. |

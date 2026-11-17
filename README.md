@@ -16,13 +16,17 @@ Todo runs seamlessly as an **interactive terminal UI (TUI)**, a **native desktop
 
 ## ✨ Features
 
-- 🦀 **Rust Stack**: Frontend and backend written in Rust with an immediate-mode UI powered by `egui` and `eframe`.
-- 🖥️ **Native Desktop Window**: Launch a standalone GPU-accelerated desktop GUI on Linux, Windows, or macOS with `cargo run -- gui`.
-- 📺 **Interactive TUI**: Rich terminal dashboard with live progress gauges, priority badges, detail pane, instant search (`/`), and filter tabs.
-- 💻 **Scriptable CLI**: Direct terminal subcommands (`add`, `list`, `done`, `rm`, `clear`, `stats`) for shell scripts and shortcuts.
-- 🌐 **WebAssembly Web App**: Compiles directly to `wasm32-unknown-unknown` via `trunk` for client-side execution on GitHub Pages or local Axum server.
-- 💾 **Crash-Resilient Storage**: Thread-safe (`RwLock`) atomic JSON writes with automatic backup restoration on corruption.
-- 🤖 **Automated CI/CD**: Weekly minor releases, monthly major releases, yearly LTS maintenance, Gemini AI PR reviews, and Dependabot automation.
+- 🦀 **100% Pure Rust & Zero JavaScript**: Complete frontend and backend written in Rust 2021 with zero JavaScript code (`git ls-files '*.js'` = 0).
+- 🖥️ **Native Desktop Window**: Standalone GPU-accelerated desktop GUI on Linux, Windows, or macOS with `cargo run -- gui` powered by `egui`/`eframe`.
+- ⟲ **GUI Undo / Redo History**: 50-step circular snapshot history with `Ctrl+Z` / `Cmd+Z` (Undo) and `Ctrl+Y` / `Cmd+Shift+Z` (Redo) plus header controls.
+- 🏷️ **Hierarchical Subtasks & #Tag Taxonomy**: Nested subtasks with progress tracking (`2/5 completed`), automatic `#hashtag` parsing from titles/descriptions, and multi-tag filtering chips.
+- 🔄 **Two-Way Differential Sync & Tombstones**: Offline-resilient sync engine with deletion tombstones, deterministic Last-Write-Wins (LWW) conflict resolution, and `GET /api/sync?since=...` differential endpoints.
+- 🗄️ **Pluggable Storage Backends**: Decoupled `TodoStorage` trait with crash-resilient JSON storage (atomic rename, backup restore, poisoned lock recovery) and high-performance indexed SQLite backend (`--features sqlite`).
+- 📺 **Interactive TUI**: Rich terminal dashboard with live progress gauges, priority badges, detail pane, instant search (`/`), and filter tabs powered by `ratatui`.
+- 💻 **Scriptable CLI & Shell Completions**: Direct CLI commands (`add`, `list`, `done`, `rm`, `subtask-done`, `stats`) plus shell autocompletions for Bash, Zsh, Fish, Elvish, and PowerShell (`todo completions <shell>`).
+- 🌐 **WebAssembly Web App**: Compiles directly to `wasm32-unknown-unknown` for pure client-side execution on GitHub Pages or local Axum server.
+- 🧪 **Offscreen Headless GUI Testing**: Comprehensive headless smoke tests (`tests/test_gui_headless.rs`) running layout, theme, action, and dialog lifecycles without requiring X11/Wayland.
+- 🤖 **Automated CI/CD**: Release matrix automation producing Linux (x86_64, aarch64), macOS (Intel, Apple Silicon), Windows (x86_64), and WASM tarballs with SHA256 checksums, automated Gemini AI PR reviews, and Dependabot.
 
 ---
 
@@ -60,14 +64,27 @@ cargo run --release -- tui
 
 ### 4. Use the CLI
 ```bash
-# Add a task
-cargo run -- add "Ship Rust App" --priority high
+# Add a task with priority, tags, and subtasks
+cargo run -- add "Ship Rust App #v0.2 #release" --priority high --subtasks "Write docs,Run headless tests,Tag release"
 
-# List tasks
+# List tasks (optionally filtered by tag)
 cargo run -- list
+cargo run -- list --tag v0.2
+
+# Complete subtask #1 on task #1
+cargo run -- subtask-done 1 1
 
 # Mark task #1 as complete
 cargo run -- done 1
+
+# Generate shell completions (bash, zsh, fish, elvish, powershell)
+cargo run -- completions zsh > ~/.zfunc/_todo
+```
+
+### 5. Run with SQLite Storage Backend
+```bash
+# Launch with high-performance SQLite engine
+cargo run --features sqlite -- --storage todos.db gui
 ```
 
 ---

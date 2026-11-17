@@ -1,7 +1,7 @@
 class Todo < Formula
   desc "High-performance cross-platform Todo app with Web, TUI, CLI, and GUI"
   homepage "https://github.com/itsvrushabh/todo"
-  version "0.1.0"
+  version "0.2.0"
   license any_of: ["MIT", "Apache-2.0"]
 
   on_macos do

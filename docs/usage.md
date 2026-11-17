@@ -14,10 +14,14 @@ cargo run --release -- gui
 ```
 
 ### ✨ GUI Capabilities
-- **Catppuccin Theme**: Dark-mode palette with mauve and blue accents.
+- **Themes**: Switch instantly between Catppuccin Macchiato, Latte, and High Contrast.
+- **Adaptive Modes**: Desktop Planning (with Kanban columns and scratchpad converter), Mobile Focus (single prioritized view), and Calm Mode (distraction-free spotlight).
+- **Undo / Redo History**: 50-step circular snapshot history with `Ctrl+Z` / `Cmd+Z` (Undo) and `Ctrl+Y` / `Cmd+Shift+Z` (Redo) or header controls.
+- **Hierarchical Subtasks & #Tags**: Add and toggle subtasks within cards, and click tag chips to filter instantly.
+- **Offline Sync & LWW Conflict Resolution**: Automatic differential sync with deletion tombstones.
 - **Task Management**: Instant addition, completion toggling, in-place editing, and task deletion.
-- **Real-Time Filters & Search**: Filter by `All`, `Active`, or `Completed` tasks, and search task titles and descriptions.
-- **Progress Gauge**: Visual completion percentage and live task counts.
+- **Real-Time Filters & Search**: Filter by `All`, `Active`, or `Completed` tasks, priority, time budgets (Quick Win, Deep Work), and hashtag taxonomy.
+- **Import / Export**: Full JSON and Markdown export and import directly in the UI.
 
 ---
 
@@ -51,9 +55,9 @@ Manage tasks directly in shell scripts, cron jobs, or terminals:
 
 ### Add Tasks
 ```bash
-# Add with optional description and priority (low, medium, high)
-cargo run -- add "Implement Rust tests" --desc "Write storage & API integration tests" --priority high
-cargo run -- add "Buy milk" --priority low
+# Add with optional description, priority, tags, and subtasks
+cargo run -- add "Implement Rust tests #dev" --desc "Write storage & API integration tests" --priority high --subtasks "Unit tests,API tests,Headless GUI"
+cargo run -- add "Buy groceries" --tag shopping --subtasks "Oat milk,Apples"
 ```
 
 ### List Tasks
@@ -61,7 +65,14 @@ cargo run -- add "Buy milk" --priority low
 cargo run -- list
 cargo run -- list --status active
 cargo run -- list --priority high
+cargo run -- list --tag dev
 cargo run -- list -q "milk"
+```
+
+### Subtasks
+```bash
+# Mark subtask #2 of task #1 as completed
+cargo run -- subtask-done 1 2
 ```
 
 ### Toggle, Delete & Clear
@@ -74,6 +85,23 @@ cargo run -- rm 2
 
 # Clear all completed tasks
 cargo run -- clear
+```
+
+### Shell Autocompletions
+```bash
+# Generate completion scripts for your shell
+cargo run -- completions bash > ~/.local/share/bash-completion/completions/todo
+cargo run -- completions zsh > ~/.zfunc/_todo
+cargo run -- completions fish > ~/.config/fish/completions/todo.fish
+```
+
+### Storage Engines
+```bash
+# Default JSON file backend (crash-resilient, poisoned lock recovery)
+cargo run -- --storage todos.json tui
+
+# Optional SQLite backend (high performance, indexed lookup)
+cargo run --features sqlite -- --storage todos.db gui
 ```
 
 ### View Statistics
