@@ -8,9 +8,25 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/itsvrushabh/todo"
 
+[lib]
+crate-type = ["cdylib", "rlib", "staticlib"]
+
+[package.metadata.android]
+package = "io.github.itsvrushabh.todo"
+apk_name = "todo"
+label = "Todo"
+assets = "static"
+icon = "static/icons/icon-512.png"
+build_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+
+[package.metadata.android.sdk]
+min_sdk_version = 24
+target_sdk_version = 34
+
 [features]
 default = []
 sqlite = ["dep:rusqlite"]
+android = ["eframe/android-native-activity"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

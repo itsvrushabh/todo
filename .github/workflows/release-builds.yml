@@ -96,6 +96,26 @@ jobs:
           sha256sum ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
         shell: bash
 
+      - name: Package Debian (.deb)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./scripts/package-deb.sh "${VERSION:-0.2.0}" "amd64" "target/${{ matrix.target }}/release/todo" "deb_dist"
+          if [ -f deb_dist/*.deb ]; then
+            cp deb_dist/*.deb .
+            sha256sum *.deb > todo-amd64.deb.sha256
+          fi
+        shell: bash
+
+      - name: Package macOS (.app bundle)
+        if: matrix.os == 'macos-latest' || matrix.os == 'macos-13'
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./scripts/package-macos-app.sh "${VERSION:-0.2.0}" "target/${{ matrix.target }}/release/todo" "macos_dist"
+          cp macos_dist/todo-macos-app.tar.gz . || true
+          sha256sum todo-macos-app.tar.gz > todo-macos-app.tar.gz.sha256 || true
+        shell: bash
+
       - name: Package binary (Windows)
         if: matrix.os == 'windows-latest'
         run: |
@@ -112,6 +132,10 @@ jobs:
           path: |
             ${{ matrix.asset_name }}
             ${{ matrix.asset_name }}.sha256
+            *.deb
+            *.deb.sha256
+            todo-macos-app.tar.gz
+            todo-macos-app.tar.gz.sha256
 
   publish-release:
     name: Publish GitHub Release

@@ -111,7 +111,62 @@ cargo run -- stats
 
 ---
 
-## 📱 Cross-Platform PWA Installation
+## 📦 Native Desktop Installation & Packaging
+
+### Linux (.deb & Desktop Entry)
+```bash
+# Build standard Debian / Ubuntu .deb package
+./scripts/package-deb.sh 0.2.0 amd64 target/release/todo dist/
+sudo dpkg -i dist/todo_0.2.0_amd64.deb
+
+# Or manually install desktop entry & icon:
+install -Dm644 packaging/desktop/todo.desktop ~/.local/share/applications/todo.desktop
+install -Dm644 packaging/desktop/todo.png ~/.local/share/icons/hicolor/512x512/apps/todo.png
+```
+
+### macOS (.app Bundle)
+```bash
+# Build standalone Todo.app bundle
+./scripts/package-macos-app.sh 0.2.0 target/release/todo dist/
+# Resulting bundle is at dist/Todo.app and dist/todo-macos-app.tar.gz
+```
+
+### Windows (MSI & ZIP)
+Standalone Windows executables (`todo.exe`) are bundled with icons into `todo-windows-amd64.zip` in CI release builds.
+
+---
+
+## 📱 Pure Rust Native Mobile Apps
+
+### 🤖 Android Native App (APK)
+Todo compiles to a pure Rust native Android application (`android.app.NativeActivity`) with zero JavaScript:
+```bash
+# Install cargo-apk tool
+cargo install cargo-apk
+
+# Ensure Android NDK is exported
+export ANDROID_NDK_ROOT=/path/to/android-ndk
+
+# Build release APK
+./scripts/build-android-apk.sh
+# Output APK: target/release/apk/todo.apk
+```
+Install directly onto an Android device via ADB:
+```bash
+adb install -r target/release/apk/todo.apk
+```
+
+### 🍎 iOS Native Library & Bundle
+Todo compiles to an iOS universal static library and application bundle using pure Rust:
+```bash
+# Build for iOS device or simulator
+./scripts/build-ios.sh aarch64-apple-ios-sim
+# Output bundle structure: target/ios/Todo.app
+```
+
+---
+
+## 🌐 Cross-Platform PWA Installation (Zero JavaScript)
 
 Todo embeds a high-performance web client and Progressive Web App directly into the compiled executable.
 

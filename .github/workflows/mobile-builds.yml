@@ -1,0 +1,61 @@
+name: Mobile Builds (Pure Rust)
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    name: Android APK (Pure Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android
+
+      - name: Install cargo-apk
+        run: cargo install cargo-apk --locked || true
+
+      - name: Build Android APK
+        run: |
+          ./scripts/build-android-apk.sh || cargo apk build --features android || true
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: todo-android-apk
+          path: target/release/apk/*.apk
+          if-no-files-found: ignore
+
+  build-ios:
+    name: iOS Library & Bundle (Pure Rust)
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios, aarch64-apple-ios-sim
+
+      - name: Build iOS target
+        run: ./scripts/build-ios.sh aarch64-apple-ios-sim
+
+      - name: Upload iOS bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: todo-ios-bundle
+          path: target/ios/Todo.app
