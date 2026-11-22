@@ -49,7 +49,7 @@ qrcode = { version = "0.14", default-features = false }
 local-ip-address = "0.6"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 rusqlite = { version = "0.32", features = ["bundled"], optional = true }
 
 [target.'cfg(target_os = "ios")'.dependencies]
